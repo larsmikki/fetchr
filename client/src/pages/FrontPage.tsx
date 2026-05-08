@@ -13,7 +13,7 @@ interface FrontPageProps {
   onCollectionsChange: () => void
 }
 
-const PAGE_SIZE = 24
+const FETCH_LIMIT = 1000
 
 const PRESET_COLORS = [
   '#e11d48', '#f97316', '#eab308', '#22c55e',
@@ -25,26 +25,23 @@ export default function FrontPage({ collections, onAddVideo, refreshKey, onColle
   const { theme } = useTheme()
   const [videos, setVideos] = useState<Video[]>([])
   const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterCollection, setFilterCollection] = useState<number | 'uncategorized' | null>(null)
   const { play } = usePlayer()
   const [editingVideo, setEditingVideo] = useState<Video | null>(null)
 
-  const fetchVideos = useCallback(async (p: number, q: string, silent = false) => {
+  const fetchVideos = useCallback(async (q: string, silent = false) => {
     if (!silent) setLoading(true)
     try {
       const res = await getVideos({
-        page: p,
-        limit: PAGE_SIZE,
+        page: 1,
+        limit: FETCH_LIMIT,
         q: q || undefined,
         collection_id: filterCollection ?? undefined,
       })
       setVideos(res.items)
       setTotal(res.total)
-      setTotalPages(res.totalPages)
     } catch {
       // silently fail
     } finally {
@@ -53,39 +50,55 @@ export default function FrontPage({ collections, onAddVideo, refreshKey, onColle
   }, [filterCollection])
 
   useEffect(() => {
-    fetchVideos(page, search)
-  }, [page, search, fetchVideos, refreshKey])
+    fetchVideos(search)
+  }, [search, fetchVideos, refreshKey])
 
   useEffect(() => {
     const hasPending = videos.some(v => v.fetch_status === 'pending')
     if (!hasPending) return
-    const timer = setInterval(() => fetchVideos(page, search, true), 3000)
+    const timer = setInterval(() => fetchVideos(search, true), 3000)
     return () => clearInterval(timer)
-  }, [videos, page, search, fetchVideos])
+  }, [videos, search, fetchVideos])
 
   const collectionMap = useMemo(() => new Map(collections.map(c => [c.id, c])), [collections])
 
-  const stateRef = useRef({ page, search })
-  stateRef.current = { page, search }
+  const isGroupedMode = filterCollection === null && !search
+  const videoGroups = useMemo(() => {
+    if (!isGroupedMode || videos.length === 0) return null
+    const grouped = new Map<number | null, Video[]>()
+    for (const video of videos) {
+      const key = video.collection_id
+      if (!grouped.has(key)) grouped.set(key, [])
+      grouped.get(key)!.push(video)
+    }
+    const groups: Array<{ collection: Collection | null; videos: Video[] }> = []
+    for (const col of collections) {
+      const vids = grouped.get(col.id) ?? []
+      if (vids.length > 0) groups.push({ collection: col, videos: vids })
+    }
+    const uncategorized = grouped.get(null) ?? []
+    if (uncategorized.length > 0) groups.push({ collection: null, videos: uncategorized })
+    return groups.length > 0 ? groups : null
+  }, [isGroupedMode, videos, collections])
+
+  const searchRef = useRef(search)
+  searchRef.current = search
   const fetchVideosRef = useRef(fetchVideos)
   fetchVideosRef.current = fetchVideos
 
   const handleDelete = useCallback(async (video: Video) => {
     await deleteVideo(video.id)
-    const { page: p, search: q } = stateRef.current
-    fetchVideosRef.current(p, q)
+    fetchVideosRef.current(searchRef.current)
   }, [])
 
   const handleEditVideo = useCallback((video: Video) => setEditingVideo(video), [])
 
   const handleFilterChange = (f: number | 'uncategorized' | null) => {
     setFilterCollection(f)
-    setPage(1)
   }
 
   const handleSearch = (val: string) => {
     setSearch(val)
-    setPage(1)
   }
 
   return (
@@ -231,6 +244,38 @@ export default function FrontPage({ collections, onAddVideo, refreshKey, onColle
             </button>
           )}
         </div>
+      ) : videoGroups ? (
+        <div className="flex flex-col gap-8">
+          {videoGroups.map(({ collection, videos: groupVideos }) => (
+            <div key={collection?.id ?? 'uncategorized'}>
+              <div className="flex items-center gap-3 mb-4">
+                <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: theme.text2 }}>
+                  {collection ? collection.name : 'Uncategorized'}
+                </h2>
+                <span
+                  className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                  style={{ background: `${theme.accent}15`, color: theme.accent }}
+                >
+                  {groupVideos.length}
+                </span>
+                <div className="flex-1 h-px" style={{ background: theme.border }} />
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
+                {groupVideos.map(video => (
+                  <VideoCard
+                    key={video.id}
+                    video={video}
+                    collectionMap={collectionMap}
+                    onClick={play}
+                    onDelete={handleDelete}
+                    onEdit={handleEditVideo}
+                    showCollection={false}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
           {videos.map(video => (
@@ -247,31 +292,6 @@ export default function FrontPage({ collections, onAddVideo, refreshKey, onColle
         </div>
       )}
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-2">
-          <button
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium transition-opacity disabled:opacity-40"
-            style={{ background: theme.surface, border: `1px solid ${theme.border}`, color: theme.text }}
-          >
-            Previous
-          </button>
-          <span className="text-sm" style={{ color: theme.text2 }}>
-            Page {page} of {totalPages}
-          </span>
-          <button
-            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium transition-opacity disabled:opacity-40"
-            style={{ background: theme.surface, border: `1px solid ${theme.border}`, color: theme.text }}
-          >
-            Next
-          </button>
-        </div>
-      )}
-
       {editingVideo && (
         <EditVideoModal
           video={editingVideo}
@@ -280,7 +300,7 @@ export default function FrontPage({ collections, onAddVideo, refreshKey, onColle
           onClose={() => setEditingVideo(null)}
           onSaved={() => {
             setEditingVideo(null)
-            fetchVideos(page, search)
+            fetchVideos(search)
           }}
         />
       )}
