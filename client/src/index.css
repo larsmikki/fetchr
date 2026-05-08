@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #e11d48 0%, #9f1239 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.card-hover {
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+.card-hover:hover {
+  transform: translateY(-1px);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(225, 29, 72, 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(225, 29, 72, 0.5);
+}

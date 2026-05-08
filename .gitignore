@@ -1,0 +1,42 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+*.tsbuildinfo
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Claude AI files
+.claude/
+
+# Windows batch files
+*.bat
+
+# Environment files
+.env
+.env.*
+
+# Database / runtime data
+data/
+test_album/
+
+# Tool-specific
+.gstack/
+.code-review-graph/

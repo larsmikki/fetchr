@@ -1,0 +1,18 @@
+services:
+  reely:
+    image: larsmikki/reely:latest
+    container_name: reely
+    ports:
+      - "3030:3030"
+    volumes:
+      - reely-data:/app/data
+      # - /path/to/your/output:/output  # mount a host folder for downloads; set "Download path" to /output in Settings
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3030/api/health"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+
+volumes:
+  reely-data:

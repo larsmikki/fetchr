@@ -1,0 +1,12 @@
+{
+  "name": "Reely",
+  "short_name": "Reely",
+  "description": "Video collection manager — self-hosted, private, free",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#f43f5e",
+  "icons": [
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
