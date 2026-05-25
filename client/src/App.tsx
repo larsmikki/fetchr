@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { ThemeProvider } from '@/contexts/ThemeContext'
 import { PlayerProvider } from '@/contexts/PlayerContext'
 import { DesktopProvider, useDesktop } from '@/contexts/DesktopContext'
+import { JobsProvider } from '@/contexts/JobsContext'
 import Layout from '@/components/Layout'
 import AddVideoModal from '@/components/AddVideoModal'
 import PersistentPlayer from '@/components/PersistentPlayer'
@@ -107,7 +108,9 @@ export default function App() {
   return (
     <ThemeProvider>
       <DesktopProvider>
-        <DesktopedApp />
+        <JobsProvider>
+          <DesktopedApp />
+        </JobsProvider>
       </DesktopProvider>
     </ThemeProvider>
   )

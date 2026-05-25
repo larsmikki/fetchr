@@ -9,13 +9,14 @@ import videosRouter from './routes/videos.js';
 import settingsRouter from './routes/settings.js';
 import dataRouter from './routes/data.js';
 import browseRouter from './routes/browse.js';
+import jobsRouter from './routes/jobs.js';
 
 export function createApp() {
   const app = express();
 
   app.use(compression({
     filter: (req, res) => {
-      // Never compress video streams — it breaks byte-range delivery
+      // Never compress video streams or SSE — both break byte-range / streaming
       if (req.path.includes('/stream')) return false;
       return compression.filter(req, res);
     },
@@ -35,6 +36,7 @@ export function createApp() {
   app.use('/api/settings', settingsRouter);
   app.use('/api/data', dataRouter);
   app.use('/api/browse', browseRouter);
+  app.use('/api/jobs', jobsRouter);
 
   // Serve client build in production
   if (config.nodeEnv === 'production') {

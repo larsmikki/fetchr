@@ -2,7 +2,21 @@ import { useEffect, useState } from 'react'
 import { usePlayer } from '@/contexts/PlayerContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { redownloadVideo } from '@/api/client'
+import {
+  downloadVideo,
+  removeOfflineVideo,
+  useOfflineState,
+} from '@/offline/videoDownloads'
 import type { Collection } from '@/types'
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB']
+  let n = bytes / 1024
+  let i = 0
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++ }
+  return `${n.toFixed(n < 10 ? 1 : 0)} ${units[i]}`
+}
 
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
@@ -17,6 +31,7 @@ export default function PersistentPlayer({ collections }: { collections: Collect
   const { theme } = useTheme()
   const [isMaximized, setIsMaximized] = useState(false)
   const [redownloading, setRedownloading] = useState(false)
+  const offline = useOfflineState(video?.id ?? -1)
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.volume = 0.8
@@ -172,53 +187,103 @@ export default function PersistentPlayer({ collections }: { collections: Collect
 
             <div>
               <p className="text-xs font-semibold tracking-wide mb-1" style={{ color: theme.text2 }}>Source</p>
-              <div className="flex items-center gap-2">
-                {video.local_path ? (
-                  <>
+              <div className="flex flex-col gap-2">
+                {/* Active source pill — what's actually playing right now.
+                    Priority: offline copy on this device → server file → live stream. */}
+                {offline.status === 'available' ? (
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded font-medium" style={{ background: '#1e40af', color: '#bfdbfe' }}>
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM10 2a1 1 0 011 1v8.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 11.586V3a1 1 0 011-1z" />
+                      </svg>
+                      Offline on device
+                    </span>
+                    <span className="text-xs" style={{ color: theme.text2 }}>{formatBytes(offline.size)}</span>
+                  </div>
+                ) : video.local_path ? (
+                  <div className="flex items-center gap-2">
                     <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded font-medium" style={{ background: '#166534', color: '#bbf7d0' }}>
                       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
                       </svg>
-                      Local file
+                      Server file
                     </span>
                     <span className="text-xs font-mono break-all" style={{ color: theme.text2 }}>
                       {video.local_path.split(/[\\/]/).pop()}
                     </span>
-                  </>
+                  </div>
                 ) : (
-                  <>
+                  <div className="flex items-center gap-2">
                     <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded font-medium" style={{ background: theme.surface2, color: theme.text2 }}>
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
                       </svg>
-                      {redownloading ? 'Downloading…' : 'Live stream'}
+                      {redownloading ? 'Downloading to server…' : 'Live stream'}
                     </span>
                     {!redownloading && (
-                      <span className="text-xs font-mono break-all" style={{ color: theme.text2 }}>{video.page_url}</span>
+                      <button
+                        onClick={async () => {
+                          if (redownloading) return
+                          setRedownloading(true)
+                          try { await redownloadVideo(video.id) } catch { setRedownloading(false) }
+                        }}
+                        title="Pull this video to the server for faster playback"
+                        className="text-xs underline transition-opacity hover:opacity-80"
+                        style={{ color: theme.accent }}
+                      >
+                        Pull to server
+                      </button>
                     )}
+                  </div>
+                )}
+
+                {/* Offline-on-device row — always visible so the user can opt in/out. */}
+                <div className="flex items-center gap-2">
+                  {offline.status === 'downloading' ? (
+                    <div className="flex items-center gap-2 w-full">
+                      <span className="text-xs" style={{ color: theme.text2 }}>
+                        Saving offline… {Math.round(offline.progress * 100)}%
+                      </span>
+                      <div className="flex-1 h-1 rounded" style={{ background: theme.surface2 }}>
+                        <div
+                          style={{
+                            height: '100%',
+                            width: `${Math.round(offline.progress * 100)}%`,
+                            background: theme.accent,
+                            borderRadius: 4,
+                            transition: 'width 0.25s linear',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ) : offline.status === 'available' ? (
                     <button
-                      onClick={async () => {
-                        if (redownloading) return
-                        setRedownloading(true)
-                        try { await redownloadVideo(video.id) } catch { setRedownloading(false) }
+                      onClick={() => {
+                        if (window.confirm('Remove this video from offline storage?')) {
+                          void removeOfflineVideo(video.id)
+                        }
                       }}
-                      title="Retry download for local playback"
-                      className="w-6 h-6 flex items-center justify-center rounded transition-opacity hover:opacity-80"
-                      style={{ color: redownloading ? theme.text2 : theme.accent }}
-                      disabled={redownloading}
+                      className="text-xs underline transition-opacity hover:opacity-80"
+                      style={{ color: theme.accent }}
                     >
-                      {redownloading ? (
-                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                        </svg>
-                      ) : (
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                        </svg>
-                      )}
+                      Remove offline copy
                     </button>
-                  </>
+                  ) : (
+                    <button
+                      onClick={() => void downloadVideo(video.id)}
+                      className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded font-medium transition-opacity hover:opacity-80"
+                      style={{ background: theme.accent, color: '#fff' }}
+                      title="Download to this device for offline playback"
+                    >
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 2a1 1 0 011 1v8.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 11.586V3a1 1 0 011-1zM3 16a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" />
+                      </svg>
+                      {offline.status === 'error' ? 'Retry save offline' : 'Save for offline'}
+                    </button>
+                  )}
+                </div>
+                {offline.status === 'error' && (
+                  <p className="text-xs" style={{ color: '#ef4444' }}>{offline.message}</p>
                 )}
               </div>
             </div>

@@ -1,11 +1,15 @@
 @import "tailwindcss";
 
+:root {
+  --brand-gradient: linear-gradient(135deg, #ec4899 0%, #be185d 100%);
+}
+
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, #e11d48 0%, #9f1239 100%);
+  background: var(--brand-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

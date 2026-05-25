@@ -1,44 +1,40 @@
 import { Router, Request, Response } from 'express';
-import { getDb, saveDb } from '../db/connection.js';
+import { settingsRepo } from '../db/repositories/settings.js';
+import { getDb } from '../db/connection.js';
+import { allRows } from '../db/repositories/rows.js';
+import { writeSidecarForVideo } from '../util/sidecar.js';
 
 const router = Router();
 
-// GET /api/settings
 router.get('/', (_req: Request, res: Response) => {
-  const db = getDb();
-  const result = db.exec('SELECT key, value FROM settings');
-
-  const settings: Record<string, string> = {};
-  if (result.length) {
-    for (const [key, value] of result[0].values) {
-      settings[key as string] = value as string;
-    }
-  }
-
-  res.json(settings);
+  res.json(settingsRepo.getAll());
 });
 
-// PATCH /api/settings
 router.patch('/', (req: Request, res: Response) => {
   const body = req.body as Record<string, string>;
-
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     res.status(400).json({ error: 'Body must be a key-value object' });
     return;
   }
-
-  const db = getDb();
-
-  for (const [key, value] of Object.entries(body)) {
-    if (typeof key !== 'string' || typeof value !== 'string') continue;
-    db.run(
-      'INSERT INTO settings (key, value) VALUES ($key, $value) ON CONFLICT(key) DO UPDATE SET value = $value',
-      { $key: key, $value: value },
-    );
-  }
-
-  saveDb();
+  settingsRepo.setMany(body);
   res.json({ status: 'ok' });
+});
+
+router.post('/regenerate-sidecars', async (_req: Request, res: Response) => {
+  const rows = allRows<{ id: number }>(
+    getDb().exec('SELECT id FROM videos WHERE local_path IS NOT NULL'),
+  );
+  let written = 0;
+  let failed = 0;
+  for (const row of rows) {
+    try {
+      await writeSidecarForVideo(row.id);
+      written++;
+    } catch {
+      failed++;
+    }
+  }
+  res.json({ written, failed, total: rows.length });
 });
 
 export default router;

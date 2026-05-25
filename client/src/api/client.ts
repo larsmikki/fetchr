@@ -129,6 +129,18 @@ export function downloadAllVideos(): void {
   a.click()
 }
 
+export function retryJob(id: number): Promise<{ ok: boolean }> {
+  return request(`/api/jobs/${id}/retry`, { method: 'POST' })
+}
+
+export function cancelJob(id: number): Promise<{ ok: boolean }> {
+  return request(`/api/jobs/${id}/cancel`, { method: 'POST' })
+}
+
+export function cleanupAndRetryVideo(id: number): Promise<{ ok: boolean }> {
+  return request(`/api/videos/${id}/cleanup-retry`, { method: 'POST' })
+}
+
 export async function importData(file: File): Promise<{ imported: number }> {
   const text = await file.text()
   const data = JSON.parse(text)
@@ -148,4 +160,8 @@ export function updateSettings(data: Record<string, string>): Promise<void> {
     method: 'PATCH',
     body: JSON.stringify(data),
   })
+}
+
+export function regenerateSidecars(): Promise<{ written: number; failed: number; total: number }> {
+  return request('/api/settings/regenerate-sidecars', { method: 'POST' })
 }

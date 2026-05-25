@@ -1,19 +1,28 @@
 import { Router, Request, Response } from 'express';
 import { pipeline } from 'node:stream';
-import { access, copyFile, unlink } from 'node:fs/promises';
-import path from 'node:path';
-import { config } from '../config.js';
+import { access, unlink } from 'node:fs/promises';
 import fetch from 'node-fetch';
-import type { BindParams } from 'sql.js';
-import { getDb, saveDb } from '../db/connection.js';
-import { extractVideoInfo, getStreamUrl, downloadToPath, downloadMp3ToPath } from '../services/extractor.service.js';
-import type { Video } from '../types/index.js';
+import { videosRepo } from '../db/repositories/videos.js';
+import { collectionsRepo } from '../db/repositories/collections.js';
+import { jobsRepo } from '../db/repositories/jobs.js';
+import { getStreamUrl, extractVideoInfo } from '../services/extractor.service.js';
+import {
+  ingestNewVideo,
+  reingestVideo,
+  enqueueDownload,
+  enqueueMp3Export,
+  enqueueOutputCopy,
+  deleteVideoCascade,
+  cleanupAndRetryVideo,
+} from '../services/videoIngestion.service.js';
+import { guardOutboundUrl } from '../util/url-guard.js';
+import { writeSidecarForVideo, deleteSidecar } from '../util/sidecar.js';
 
 const router = Router();
 
 // Cache stream URLs to avoid re-running yt-dlp on every browser range request
 const streamUrlCache = new Map<number, { url: string; expiresAt: number }>();
-const STREAM_URL_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
+const STREAM_URL_TTL_MS = 4 * 60 * 60 * 1000;
 
 async function getCachedStreamUrl(id: number, pageUrl: string): Promise<string> {
   const cached = streamUrlCache.get(id);
@@ -23,20 +32,8 @@ async function getCachedStreamUrl(id: number, pageUrl: string): Promise<string> 
   return url;
 }
 
-function pruneCollectionIfEmpty(collectionId: number | null): void {
-  if (collectionId == null) return;
-  const db = getDb();
-  const result = db.exec('SELECT COUNT(*) FROM videos WHERE collection_id = $cid', { $cid: collectionId });
-  const count = result.length ? (result[0].values[0][0] as number) : 0;
-  if (count === 0) db.run('DELETE FROM collections WHERE id = $id', { $id: collectionId });
-}
-
-function rowToVideos(columns: string[], values: unknown[][]): Video[] {
-  return values.map(row => {
-    const obj: Record<string, unknown> = {};
-    columns.forEach((col, i) => { obj[col] = row[i]; });
-    return obj as unknown as Video;
-  });
+function pickDesktop(value: unknown): 1 | 2 {
+  return value === 2 || value === '2' ? 2 : 1;
 }
 
 // GET /api/videos
@@ -44,49 +41,15 @@ router.get('/', (req: Request, res: Response) => {
   const collectionId = req.query.collection_id as string | undefined;
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 24));
-  const q = (req.query.q as string | undefined)?.trim();
-  const desktopId = req.query.desktop === '2' ? 2 : 1;
-  const offset = (page - 1) * limit;
+  const q = (req.query.q as string | undefined)?.trim() || undefined;
+  const desktopId = pickDesktop(req.query.desktop);
 
-  const db = getDb();
+  let collection: number | 'null' | undefined;
+  if (collectionId === 'null' || collectionId === '') collection = 'null';
+  else if (collectionId !== undefined) collection = Number(collectionId);
 
-  const conditions: string[] = ['desktop_id = $desktop_id'];
-  const params: BindParams = { $desktop_id: desktopId };
-
-  if (collectionId !== undefined) {
-    if (collectionId === 'null' || collectionId === '') {
-      conditions.push('collection_id IS NULL');
-    } else {
-      conditions.push('collection_id = $collection_id');
-      params.$collection_id = Number(collectionId);
-    }
-  }
-
-  if (q) {
-    conditions.push('(title LIKE $q OR notes LIKE $q OR page_url LIKE $q)');
-    params.$q = `%${q}%`;
-  }
-
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
-  const countResult = db.exec(`SELECT COUNT(*) FROM videos ${where}`, params);
-  const total = countResult.length ? (countResult[0].values[0][0] as number) : 0;
-
-  const dataResult = db.exec(
-    `SELECT * FROM videos ${where} ORDER BY added_at DESC LIMIT $limit OFFSET $offset`,
-    { ...params, $limit: limit, $offset: offset },
-  );
-
-  const items = dataResult.length
-    ? rowToVideos(dataResult[0].columns, dataResult[0].values)
-    : [];
-
-  res.json({
-    items,
-    total,
-    page,
-    totalPages: Math.ceil(total / limit),
-  });
+  const { items, total } = videosRepo.list({ desktopId, collectionId: collection, q, page, limit });
+  res.json({ items, total, page, totalPages: Math.ceil(total / limit) });
 });
 
 // POST /api/videos
@@ -105,106 +68,18 @@ router.post('/', (req: Request, res: Response) => {
     return;
   }
 
-  const desktopId = desktop_id === 2 ? 2 : 1;
-  const db = getDb();
+  const desktopId = pickDesktop(desktop_id);
+  const trimmed = url.trim();
 
-  const dup = db.exec(
-    'SELECT id FROM videos WHERE page_url = $page_url AND desktop_id = $desktop_id',
-    { $page_url: url.trim(), $desktop_id: desktopId },
-  );
-  if (dup.length && dup[0].values.length) {
+  if (videosRepo.existsByUrl(trimmed, desktopId)) {
     res.status(409).json({ error: 'This URL has already been added to this desktop.' });
     return;
   }
 
-  db.run(
-    `INSERT INTO videos (page_url, collection_id, notes, fetch_status, desktop_id)
-     VALUES ($page_url, $collection_id, $notes, 'pending', $desktop_id)`,
-    {
-      $page_url: url.trim(),
-      $collection_id: collection_id ?? null,
-      $notes: notes ?? null,
-      $desktop_id: desktopId,
-    },
+  const video = ingestNewVideo(
+    { url: trimmed, collectionId: collection_id ?? null, notes: notes ?? null, desktopId },
+    { outputMp4: output_mp4, downloadMp3: download_mp3 },
   );
-
-  const idResult = db.exec('SELECT last_insert_rowid()');
-  const id = idResult[0].values[0][0] as number;
-  saveDb();
-
-  const videoResult = db.exec('SELECT * FROM videos WHERE id = $id', { $id: id });
-  const video = rowToVideos(videoResult[0].columns, videoResult[0].values)[0];
-
-  // Trigger extraction in background
-  console.log(`[video:${id}] fetching metadata for ${url.trim()}`);
-  extractVideoInfo(url.trim())
-    .then(info => {
-      console.log(`[video:${id}] metadata ok — title: "${info.title}"`);
-      const db2 = getDb();
-      db2.run(
-        `UPDATE videos SET
-          title = $title,
-          description = $description,
-          duration = $duration,
-          thumbnail_url = $thumbnail_url,
-          site = $site,
-          fetch_status = 'ok',
-          fetch_error = NULL,
-          updated_at = datetime('now')
-         WHERE id = $id`,
-        {
-          $id: id,
-          $title: info.title,
-          $description: info.description,
-          $duration: info.duration,
-          $thumbnail_url: info.thumbnail_url,
-          $site: info.site,
-        },
-      );
-      saveDb();
-
-      const settingsResult = db2.exec("SELECT key, value FROM settings WHERE key IN ('download_path', 'ffmpeg_path')");
-      const settings: Record<string, string> = {};
-      if (settingsResult.length) {
-        for (const [k, v] of settingsResult[0].values) settings[k as string] = v as string;
-      }
-      const outputPath = settings['download_path'] ?? null;
-      const ffmpegPath = settings['ffmpeg_path'] || config.ffmpegPath;
-
-      console.log(`[video:${id}] downloading to ${config.videosDir}`);
-      downloadToPath(id, url.trim(), config.videosDir, ffmpegPath)
-        .then(async localPath => {
-          console.log(`[video:${id}] download complete — ${localPath}`);
-          const db3 = getDb();
-          db3.run(
-            `UPDATE videos SET local_path = $local_path, updated_at = datetime('now') WHERE id = $id`,
-            { $id: id, $local_path: localPath },
-          );
-          saveDb();
-          if (output_mp4 && outputPath) {
-            const dest = path.join(outputPath, path.basename(localPath));
-            console.log(`[video:${id}] copying mp4 to output folder — ${dest}`);
-            await copyFile(localPath, dest).catch(
-              (e: unknown) => { console.error(`[video:${id}] copy to output failed:`, (e as Error).message); },
-            );
-          }
-        })
-        .catch((e: unknown) => { console.error(`[video:${id}] download error:`, (e as Error).message); });
-
-      if (download_mp3 && outputPath) {
-        console.log(`[video:${id}] queuing mp3 export to ${outputPath}`);
-        downloadMp3ToPath(url.trim(), outputPath, ffmpegPath).catch((e: unknown) => { console.error(`[video:${id}] mp3 error:`, (e as Error).message); });
-      }
-    })
-    .catch(err => {
-      console.error(`[video:${id}] metadata failed:`, (err as Error).message);
-      const db2 = getDb();
-      db2.run(
-        `UPDATE videos SET fetch_status = 'error', fetch_error = $error, updated_at = datetime('now') WHERE id = $id`,
-        { $id: id, $error: (err as Error).message },
-      );
-      saveDb();
-    });
 
   res.status(201).json(video);
 });
@@ -212,208 +87,166 @@ router.post('/', (req: Request, res: Response) => {
 // GET /api/videos/:id
 router.get('/:id', (req: Request, res: Response) => {
   const id = Number(req.params.id);
-  const db = getDb();
-
-  const result = db.exec('SELECT * FROM videos WHERE id = $id', { $id: id });
-  if (!result.length || !result[0].values.length) {
+  const video = videosRepo.findById(id);
+  if (!video) {
     res.status(404).json({ error: 'Video not found' });
     return;
   }
-
-  const video = rowToVideos(result[0].columns, result[0].values)[0];
   res.json(video);
 });
 
 // GET /api/videos/:id/stream — serve local file if downloaded, otherwise proxy via yt-dlp
 router.get('/:id/stream', async (req: Request, res: Response) => {
   const id = Number(req.params.id);
-  const db = getDb();
-
-  const result = db.exec('SELECT page_url, local_path FROM videos WHERE id = $id', { $id: id });
-  if (!result.length || !result[0].values.length) {
+  const video = videosRepo.findById(id);
+  if (!video) {
     res.status(404).json({ error: 'Video not found' });
     return;
   }
 
-  const pageUrl = result[0].values[0][0] as string;
-  const localPath = result[0].values[0][1] as string | null;
-
-  // Serve the local file if it exists — sendFile handles Range requests natively
-  if (localPath) {
+  if (video.local_path) {
     try {
-      await access(localPath);
-      res.sendFile(localPath, err => {
+      await access(video.local_path);
+      res.sendFile(video.local_path, err => {
         if (err && !res.headersSent) res.status(500).json({ error: 'Failed to serve local file' });
       });
       return;
     } catch {
-      // File was deleted or moved — fall through to yt-dlp proxy
+      // fall through to proxy
     }
   }
 
   let streamUrl: string;
   try {
-    streamUrl = await getCachedStreamUrl(id, pageUrl);
+    streamUrl = await getCachedStreamUrl(id, video.page_url);
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });
     return;
   }
 
+  const guard = await guardOutboundUrl(streamUrl);
+  if (!guard.ok) {
+    res.status(502).json({ error: `Stream URL rejected: ${guard.reason}` });
+    return;
+  }
+
   const proxyHeaders: Record<string, string> = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Referer': (() => { try { return new URL(pageUrl).origin + '/'; } catch { return pageUrl; } })(),
+    'Referer': (() => { try { return new URL(video.page_url).origin + '/'; } catch { return video.page_url; } })(),
   };
   if (req.headers.range) proxyHeaders['Range'] = req.headers.range as string;
 
   try {
     const upstream = await fetch(streamUrl, { headers: proxyHeaders });
 
-    // If the cached URL expired on the CDN side, invalidate cache and retry once
     if (upstream.status === 403 || upstream.status === 410) {
       streamUrlCache.delete(id);
-      const freshUrl = await getCachedStreamUrl(id, pageUrl);
-      const retried = await fetch(freshUrl, { headers: proxyHeaders });
-      res.status(retried.status);
-      for (const h of ['content-type', 'content-length', 'content-range']) {
-        const v = retried.headers.get(h);
-        if (v) res.setHeader(h, v);
+      const freshUrl = await getCachedStreamUrl(id, video.page_url);
+      const freshGuard = await guardOutboundUrl(freshUrl);
+      if (!freshGuard.ok) {
+        res.status(502).json({ error: `Refreshed stream URL rejected: ${freshGuard.reason}` });
+        return;
       }
-      res.setHeader('Accept-Ranges', 'bytes');
-      if (!retried.body) { res.end(); return; }
-      pipeline(retried.body as unknown as NodeJS.ReadableStream, res, (err) => {
-        if (err && !res.destroyed) res.destroy(err);
-      });
+      const retried = await fetch(freshUrl, { headers: proxyHeaders });
+      pipeUpstream(retried, res);
       return;
     }
 
-    res.status(upstream.status);
-    for (const h of ['content-type', 'content-length', 'content-range']) {
-      const v = upstream.headers.get(h);
-      if (v) res.setHeader(h, v);
-    }
-    res.setHeader('Accept-Ranges', 'bytes');
-    if (!upstream.body) { res.end(); return; }
-    pipeline(upstream.body as unknown as NodeJS.ReadableStream, res, (err) => {
-      if (err && !res.destroyed) res.destroy(err);
-    });
+    pipeUpstream(upstream, res);
   } catch (err) {
     if (!res.headersSent) res.status(502).json({ error: (err as Error).message });
   }
 });
 
-// POST /api/videos/:id/refresh
+function pipeUpstream(upstream: import('node-fetch').Response, res: Response): void {
+  res.status(upstream.status);
+  for (const h of ['content-type', 'content-length', 'content-range']) {
+    const v = upstream.headers.get(h);
+    if (v) res.setHeader(h, v);
+  }
+  res.setHeader('Accept-Ranges', 'bytes');
+  if (!upstream.body) { res.end(); return; }
+  pipeline(upstream.body as unknown as NodeJS.ReadableStream, res, err => {
+    if (err && !res.destroyed) res.destroy(err);
+  });
+}
+
+// POST /api/videos/:id/refresh — synchronously re-extract metadata
 router.post('/:id/refresh', async (req: Request, res: Response) => {
   const id = Number(req.params.id);
-  const db = getDb();
-
-  const existing = db.exec('SELECT page_url FROM videos WHERE id = $id', { $id: id });
-  if (!existing.length || !existing[0].values.length) {
+  const video = videosRepo.findById(id);
+  if (!video) {
     res.status(404).json({ error: 'Video not found' });
     return;
   }
 
-  const pageUrl = existing[0].values[0][0] as string;
-
-  // Set status to pending while refreshing
-  db.run(
-    `UPDATE videos SET fetch_status = 'pending', fetch_error = NULL, updated_at = datetime('now') WHERE id = $id`,
-    { $id: id },
-  );
-  saveDb();
-
+  videosRepo.update(id, { fetchStatus: 'pending', fetchError: null });
   try {
-    const info = await extractVideoInfo(pageUrl);
-    db.run(
-      `UPDATE videos SET
-        title = $title,
-        description = $description,
-        duration = $duration,
-        thumbnail_url = $thumbnail_url,
-        site = $site,
-        fetch_status = 'ok',
-        fetch_error = NULL,
-        updated_at = datetime('now')
-       WHERE id = $id`,
-      {
-        $id: id,
-        $title: info.title,
-        $description: info.description,
-        $duration: info.duration,
-        $thumbnail_url: info.thumbnail_url,
-        $site: info.site,
-      },
-    );
-    saveDb();
+    const info = await extractVideoInfo(video.page_url);
+    const updated = videosRepo.update(id, {
+      title: info.title,
+      description: info.description,
+      duration: info.duration,
+      thumbnailUrl: info.thumbnail_url,
+      site: info.site,
+      fetchStatus: 'ok',
+      fetchError: null,
+    });
+    if (updated?.local_path) await writeSidecarForVideo(id);
+    res.json(updated);
   } catch (err) {
-    db.run(
-      `UPDATE videos SET fetch_status = 'error', fetch_error = $error, updated_at = datetime('now') WHERE id = $id`,
-      { $id: id, $error: (err as Error).message },
-    );
-    saveDb();
+    const message = (err as Error).message;
+    const updated = videosRepo.update(id, { fetchStatus: 'error', fetchError: message });
+    res.json(updated);
   }
-
-  const videoResult = db.exec('SELECT * FROM videos WHERE id = $id', { $id: id });
-  const video = rowToVideos(videoResult[0].columns, videoResult[0].values)[0];
-  res.json(video);
 });
 
-// POST /api/videos/:id/redownload — re-trigger local download for a live-stream video
+// POST /api/videos/:id/redownload
 router.post('/:id/redownload', (req: Request, res: Response) => {
   const id = Number(req.params.id);
-  const db = getDb();
-
-  const result = db.exec('SELECT id, page_url FROM videos WHERE id = $id', { $id: id });
-  if (!result.length || !result[0].values.length) {
+  if (!enqueueDownload(id)) {
     res.status(404).json({ error: 'Video not found' });
     return;
   }
-
-  const [, pageUrl] = result[0].values[0] as [number, string];
-  const settingsResult = db.exec("SELECT key, value FROM settings WHERE key = 'ffmpeg_path'");
-  const settings: Record<string, string> = {};
-  if (settingsResult.length) {
-    for (const [k, v] of settingsResult[0].values) settings[k as string] = v as string;
-  }
-  const ffmpegPath = settings['ffmpeg_path'] || config.ffmpegPath;
-
   res.status(202).json({ ok: true });
+});
 
-  downloadToPath(id, pageUrl, config.videosDir, ffmpegPath)
-    .then(localPath => {
-      const db2 = getDb();
-      db2.run(
-        `UPDATE videos SET local_path = $local_path, updated_at = datetime('now') WHERE id = $id`,
-        { $id: id, $local_path: localPath },
-      );
-      saveDb();
-    })
-    .catch((e: unknown) => { console.error('[redownload] error:', (e as Error).message); });
+// POST /api/videos/:id/cleanup-retry — cancel in-flight jobs, delete partial files, re-run pipeline
+router.post('/:id/cleanup-retry', async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const updated = await cleanupAndRetryVideo(id);
+  if (!updated) {
+    res.status(404).json({ error: 'Video not found' });
+    return;
+  }
+  res.status(202).json({ ok: true });
 });
 
 // GET /api/videos/:id/thumbnail
 router.get('/:id/thumbnail', async (req: Request, res: Response) => {
   const id = Number(req.params.id);
-  const db = getDb();
-
-  const result = db.exec('SELECT thumbnail_url FROM videos WHERE id = $id', { $id: id });
-  if (!result.length || !result[0].values.length) {
+  const video = videosRepo.findById(id);
+  if (!video) {
     res.status(404).json({ error: 'Video not found' });
     return;
   }
-
-  const thumbnailUrl = result[0].values[0][0] as string | null;
-  if (!thumbnailUrl) {
+  if (!video.thumbnail_url) {
     res.status(404).json({ error: 'No thumbnail available' });
     return;
   }
 
+  const guard = await guardOutboundUrl(video.thumbnail_url);
+  if (!guard.ok) {
+    res.status(502).json({ error: `Thumbnail URL rejected: ${guard.reason}` });
+    return;
+  }
+
   try {
-    const response = await fetch(thumbnailUrl);
+    const response = await fetch(video.thumbnail_url);
     if (!response.ok) {
       res.status(502).json({ error: 'Failed to fetch thumbnail' });
       return;
     }
-
     const contentType = response.headers.get('content-type') ?? 'image/jpeg';
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -424,9 +257,9 @@ router.get('/:id/thumbnail', async (req: Request, res: Response) => {
 });
 
 // PUT /api/videos/:id
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', async (req: Request, res: Response) => {
   const id = Number(req.params.id);
-  const { collection_id, notes, title, download_mp3, output_mp4, page_url, redownload } = req.body as {
+  const body = req.body as {
     collection_id?: number | null;
     notes?: string | null;
     title?: string | null;
@@ -436,138 +269,84 @@ router.put('/:id', (req: Request, res: Response) => {
     redownload?: boolean;
   };
 
-  const db = getDb();
-
-  const existingResult = db.exec('SELECT id, page_url, local_path, collection_id FROM videos WHERE id = $id', { $id: id });
-  if (!existingResult.length || !existingResult[0].values.length) {
+  const existing = videosRepo.findById(id);
+  if (!existing) {
     res.status(404).json({ error: 'Video not found' });
     return;
   }
 
-  const existing = rowToVideos(existingResult[0].columns, existingResult[0].values)[0];
+  const urlChanged = !!(body.page_url && body.page_url.trim() !== existing.page_url);
 
-  const updates: string[] = ["updated_at = datetime('now')"];
-  const params: BindParams = { $id: id };
-
-  if (collection_id !== undefined) { updates.push('collection_id = $collection_id'); params.$collection_id = collection_id; }
-  if (notes !== undefined) { updates.push('notes = $notes'); params.$notes = notes; }
-
-  const urlChanged = !!(page_url && page_url.trim() !== existing.page_url);
-  if (urlChanged) {
-    updates.push('page_url = $page_url');
-    params.$page_url = page_url!.trim();
+  if (body.redownload && urlChanged) {
     streamUrlCache.delete(id);
-  }
-
-  if (redownload && urlChanged) {
-    updates.push("fetch_status = 'pending'", 'fetch_error = NULL', 'title = NULL', 'description = NULL', 'duration = NULL', 'thumbnail_url = NULL', 'site = NULL', 'local_path = NULL');
-  } else {
-    if (title !== undefined) { updates.push('title = $title'); params.$title = title; }
-  }
-
-  db.run(`UPDATE videos SET ${updates.join(', ')} WHERE id = $id`, params);
-  if (collection_id !== undefined && collection_id !== existing.collection_id) {
-    pruneCollectionIfEmpty(existing.collection_id);
-  }
-  saveDb();
-
-  const settingsResult = db.exec("SELECT key, value FROM settings WHERE key IN ('download_path', 'ffmpeg_path')");
-  const settings: Record<string, string> = {};
-  if (settingsResult.length) {
-    for (const [k, v] of settingsResult[0].values) settings[k as string] = v as string;
-  }
-  const outputPath = settings['download_path'] ?? null;
-  const ffmpegPath = settings['ffmpeg_path'] || config.ffmpegPath;
-
-  if (redownload && urlChanged) {
-    const newUrl = page_url!.trim();
-    extractVideoInfo(newUrl)
-      .then(info => {
-        const db2 = getDb();
-        db2.run(
-          `UPDATE videos SET
-            title = $title,
-            description = $description,
-            duration = $duration,
-            thumbnail_url = $thumbnail_url,
-            site = $site,
-            fetch_status = 'ok',
-            fetch_error = NULL,
-            updated_at = datetime('now')
-           WHERE id = $id`,
-          { $id: id, $title: info.title, $description: info.description, $duration: info.duration, $thumbnail_url: info.thumbnail_url, $site: info.site },
-        );
-        saveDb();
-
-        downloadToPath(id, newUrl, config.videosDir, ffmpegPath)
-          .then(async localPath => {
-            const db3 = getDb();
-            db3.run(
-              `UPDATE videos SET local_path = $local_path, updated_at = datetime('now') WHERE id = $id`,
-              { $id: id, $local_path: localPath },
-            );
-            saveDb();
-            if (output_mp4 && outputPath) {
-              await copyFile(localPath, path.join(outputPath, path.basename(localPath))).catch(
-                (e: unknown) => { console.error('[dl] copy to output failed:', (e as Error).message); },
-              );
-            }
-          })
-          .catch((e: unknown) => { console.error('[dl] error:', (e as Error).message); });
-
-        if (download_mp3 && outputPath) {
-          downloadMp3ToPath(newUrl, outputPath, ffmpegPath).catch((e: unknown) => { console.error('[mp3] download error:', (e as Error).message); });
-        }
-      })
-      .catch(err => {
-        const db2 = getDb();
-        db2.run(
-          `UPDATE videos SET fetch_status = 'error', fetch_error = $error, updated_at = datetime('now') WHERE id = $id`,
-          { $id: id, $error: (err as Error).message },
-        );
-        saveDb();
-      });
-  } else if (download_mp3 === true || output_mp4 === true) {
-    if (download_mp3 && outputPath) {
-      downloadMp3ToPath(existing.page_url, outputPath, ffmpegPath).catch((e: unknown) => { console.error('[mp3] download error:', (e as Error).message); });
+    const newUrl = body.page_url!.trim();
+    const updated = reingestVideo(id, newUrl, {
+      outputMp4: body.output_mp4,
+      downloadMp3: body.download_mp3,
+    });
+    if (body.collection_id !== undefined && body.collection_id !== existing.collection_id) {
+      videosRepo.update(id, { collectionId: body.collection_id });
+      collectionsRepo.pruneIfEmpty(existing.collection_id);
     }
-    if (output_mp4 && outputPath && existing.local_path) {
-      copyFile(existing.local_path, path.join(outputPath, path.basename(existing.local_path))).catch((e: unknown) => { console.error('[dl] copy to output failed:', (e as Error).message); });
-    }
+    res.json(videosRepo.findById(id) ?? updated);
+    return;
   }
 
-  const videoResult = db.exec('SELECT * FROM videos WHERE id = $id', { $id: id });
-  const video = rowToVideos(videoResult[0].columns, videoResult[0].values)[0];
-  res.json(video);
+  const updated = videosRepo.update(id, {
+    collectionId: body.collection_id,
+    notes: body.notes,
+    title: body.title,
+    pageUrl: urlChanged ? body.page_url!.trim() : undefined,
+  });
+
+  if (body.collection_id !== undefined && body.collection_id !== existing.collection_id) {
+    collectionsRepo.pruneIfEmpty(existing.collection_id);
+  }
+
+  if (urlChanged) streamUrlCache.delete(id);
+
+  if (body.output_mp4 && existing.local_path) enqueueOutputCopy(id);
+  if (body.download_mp3) enqueueMp3Export(id);
+
+  const titleChanged = body.title !== undefined && body.title !== existing.title;
+  const collectionChanged =
+    body.collection_id !== undefined && body.collection_id !== existing.collection_id;
+  if (updated?.local_path && (titleChanged || collectionChanged)) {
+    await writeSidecarForVideo(id);
+  }
+
+  res.json(updated);
 });
 
 // DELETE /api/videos/:id
 router.delete('/:id', (req: Request, res: Response) => {
   const id = Number(req.params.id);
-  const db = getDb();
-
-  const existing = db.exec('SELECT id, collection_id, local_path FROM videos WHERE id = $id', { $id: id });
-  if (!existing.length || !existing[0].values.length) {
+  const video = videosRepo.findById(id);
+  if (!video) {
     res.status(404).json({ error: 'Video not found' });
     return;
   }
-
-  const collectionId = existing[0].values[0][1] as number | null;
-  const localPath = existing[0].values[0][2] as string | null;
-
-  db.run('DELETE FROM videos WHERE id = $id', { $id: id });
-  pruneCollectionIfEmpty(collectionId);
-  saveDb();
-
+  const localPath = video.local_path;
+  deleteVideoCascade(id);
   if (localPath) {
     unlink(localPath).catch(e => {
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
         console.error(`[delete] failed to remove file ${localPath}:`, (e as Error).message);
       }
     });
+    deleteSidecar(localPath);
   }
-
   res.json({ status: 'ok' });
+});
+
+// GET /api/videos/:id/jobs — recent jobs for this video
+router.get('/:id/jobs', (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!videosRepo.findById(id)) {
+    res.status(404).json({ error: 'Video not found' });
+    return;
+  }
+  res.json({ items: jobsRepo.listForVideo(id) });
 });
 
 export default router;

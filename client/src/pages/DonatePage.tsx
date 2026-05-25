@@ -1,10 +1,11 @@
 import { useTheme } from '@/contexts/ThemeContext'
+import { Surface } from '@/components/ui'
 
 export default function DonatePage() {
   const { theme } = useTheme()
 
   return (
-    <div className="flex flex-col gap-6 max-w-2xl">
+    <div className="flex flex-col gap-5 max-w-2xl mx-auto">
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight" style={{ color: theme.text }}>
           Support Reely
@@ -14,19 +15,11 @@ export default function DonatePage() {
         </p>
       </div>
 
-      {/* Main donate card */}
-      <section
-        style={{
-          background: theme.surface,
-          border: `1px solid ${theme.border}`,
-          borderRadius: 16,
-          padding: 24,
-        }}
-      >
+      <Surface className="p-6">
         <div className="flex items-center gap-3 mb-4">
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-            style={{ background: 'linear-gradient(135deg, #e11d48 0%, #9f1239 100%)' }}
+            style={{ background: 'var(--brand-gradient)' }}
           >
             <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
               <path
@@ -37,10 +30,10 @@ export default function DonatePage() {
             </svg>
           </div>
           <div>
-            <h2 className="text-base font-bold" style={{ color: theme.text }}>
+            <h2 className="text-base font-bold mb-1" style={{ color: theme.text }}>
               Support the Developer
             </h2>
-            <p className="text-sm" style={{ color: theme.text2 }}>
+            <p className="text-xs" style={{ color: theme.text2 }}>
               Every contribution helps keep Reely maintained and growing.
             </p>
           </div>
@@ -52,7 +45,7 @@ export default function DonatePage() {
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-white transition-opacity hover:opacity-90"
-            style={{ background: 'linear-gradient(135deg, #e11d48 0%, #9f1239 100%)' }}
+            style={{ background: 'var(--brand-gradient)' }}
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
               <path
@@ -81,20 +74,15 @@ export default function DonatePage() {
             GitHub Sponsors
           </a>
         </div>
-      </section>
+      </Surface>
 
-      {/* Why donate */}
-      <section
-        style={{
-          background: theme.surface,
-          border: `1px solid ${theme.border}`,
-          borderRadius: 16,
-          padding: 24,
-        }}
-      >
-        <h2 className="text-base font-bold mb-3" style={{ color: theme.text }}>
+      <Surface className="p-6">
+        <h2 className="text-base font-bold mb-1" style={{ color: theme.text }}>
           Why support Reely?
         </h2>
+        <p className="text-xs mb-5" style={{ color: theme.text2 }}>
+          A few reasons your contribution matters.
+        </p>
         <ul className="flex flex-col gap-2.5">
           {[
             'Reely is 100% free and self-hosted — no subscriptions, no tracking.',
@@ -117,9 +105,8 @@ export default function DonatePage() {
             </li>
           ))}
         </ul>
-      </section>
+      </Surface>
 
-      {/* Thank you */}
       <p className="text-sm text-center" style={{ color: theme.text2 }}>
         Thank you for using Reely. Your support means the world.
       </p>

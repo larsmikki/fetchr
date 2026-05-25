@@ -21,15 +21,17 @@
 - 10 built-in themes (light and dark)
 - No tracking, no accounts, no cloud — your data stays on your machine
 
-## Requirements
+## Getting started
 
-- Docker and Docker Compose
+Pick whichever install path matches your setup. All paths land on [http://localhost:3030](http://localhost:3030).
 
-yt-dlp and ffmpeg are included in the Docker image — nothing else to install.
+> **Non-Docker installs** need `yt-dlp` and `ffmpeg` on `PATH`. The Docker image bundles both — nothing extra to install.
 
-## Docker setup
+### 1. Docker (Docker Desktop, NAS, or any Docker server)
 
-### Quick start
+Works on Synology, Unraid, TrueNAS, QNAP, Proxmox, or a plain Docker host.
+
+**One-liner:**
 
 ```bash
 docker run -d \
@@ -40,9 +42,7 @@ docker run -d \
   larsmikki/reely:latest
 ```
 
-Then open [http://localhost:3030](http://localhost:3030).
-
-### Docker Compose (recommended)
+**Docker Compose (recommended):**
 
 ```yaml
 services:
@@ -61,6 +61,61 @@ volumes:
 ```
 
 To download videos to a folder on your host machine, uncomment the second volume line, set the host path, and configure the download path to `/output` in **Settings**.
+
+### 2. Local install on Windows
+
+Requires [Git for Windows](https://git-scm.com/download/win), [Node.js 20+](https://nodejs.org/), `yt-dlp`, and `ffmpeg`. The easiest way to get the binaries is via [Chocolatey](https://chocolatey.org/) or [Scoop](https://scoop.sh/):
+
+```powershell
+scoop install nodejs-lts git yt-dlp ffmpeg
+git clone https://github.com/larsmikki/reely.git
+cd reely
+npm install
+npm run dev
+```
+
+For a production build:
+
+```powershell
+npm run build
+npm start
+```
+
+### 3. Local install on macOS
+
+```bash
+brew install node git yt-dlp ffmpeg
+git clone https://github.com/larsmikki/reely.git
+cd reely
+npm install
+npm run dev
+```
+
+For a production build:
+
+```bash
+npm run build
+npm start
+```
+
+### 4. Local install on Linux
+
+Debian/Ubuntu:
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs git ffmpeg python3-pip
+sudo pip3 install -U yt-dlp
+
+git clone https://github.com/larsmikki/reely.git
+cd reely
+npm install
+npm run dev
+```
+
+On Fedora/RHEL use `dnf install nodejs git ffmpeg yt-dlp`; on Arch use `pacman -S nodejs npm git ffmpeg yt-dlp`.
+
+For a production build: `npm run build && npm start`.
 
 ## Configuration
 

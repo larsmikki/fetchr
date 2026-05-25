@@ -1,15 +1,14 @@
-<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="reely">
   <defs>
-    <linearGradient id="reely-favicon-bg" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
-      <stop offset="0%" stop-color="#f43f5e"/>
-      <stop offset="100%" stop-color="#9f1239"/>
-    </linearGradient>
-    <linearGradient id="reely-favicon-sh" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
-      <stop offset="0%" stop-color="white" stop-opacity="0.22"/>
-      <stop offset="100%" stop-color="white" stop-opacity="0"/>
+    <linearGradient id="bg-reely" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ec4899"></stop>
+      <stop offset="100%" stop-color="#be185d"></stop>
     </linearGradient>
   </defs>
-  <rect width="36" height="36" rx="10" fill="url(#reely-favicon-bg)"/>
-  <rect width="36" height="20" rx="10" fill="url(#reely-favicon-sh)"/>
-  <path d="M18 28 L26 18 L21 18 L21 8 L15 8 L15 18 L10 18 Z" fill="white" opacity="0.95"/>
+  <rect width="64" height="64" rx="14.4" fill="url(#bg-reely)"></rect>
+  <g color="#ffffff" transform="translate(6.399999999999999 6.399999999999999) scale(0.8)">
+    <g fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+    <path d="M17 14 Q17 11 20 12.5 L46 30.5 Q48.5 32 46 33.5 L20 51.5 Q17 53 17 50 Z"></path>
+  </g>
+  </g>
 </svg>
