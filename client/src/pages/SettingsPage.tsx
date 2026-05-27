@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useTheme } from '@/contexts/ThemeContext'
 import ThemePicker from '@/components/ThemePicker'
 import FolderPicker from '@/components/FolderPicker'
-import { getSettings, updateSettings, exportData, importData, downloadAllVideos, regenerateSidecars, cancelJob, retryJob, cleanupAndRetryVideo } from '@/api/client'
+import { getSettings, updateSettings, exportData, importData, downloadAllVideos, regenerateSidecars, cancelJob, retryJob, cleanupAndRetryVideo } from '@/api'
 import { Button, Input, Surface } from '@/components/ui'
 import { useJobs, JOB_KIND_LABEL, type Job } from '@/contexts/JobsContext'
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { usePlayer } from '@/contexts/PlayerContext'
 import { useTheme } from '@/contexts/ThemeContext'
-import { redownloadVideo } from '@/api/client'
+import { redownloadVideo } from '@/api'
 import {
   downloadVideo,
   removeOfflineVideo,
@@ -27,19 +27,15 @@ function formatDuration(seconds: number): string {
 }
 
 export default function PersistentPlayer({ collections }: { collections: Collection[] }) {
-  const { video, mode, videoRef, minimize, expand, close, pendingSeekTime } = usePlayer()
+  const { video, mode, videoRef, minimize, close, consumePendingSeek } = usePlayer()
   const { theme } = useTheme()
-  const [isMaximized, setIsMaximized] = useState(false)
+  const [userMaximized, setUserMaximized] = useState(false)
   const [redownloading, setRedownloading] = useState(false)
   const offline = useOfflineState(video?.id ?? -1)
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.volume = 0.8
-  }, [])
-
-  useEffect(() => {
-    if (mode !== 'full') setIsMaximized(false)
-  }, [mode])
+  }, [videoRef])
 
   // Escape minimizes (keeps audio playing) instead of closing
   useEffect(() => {
@@ -54,7 +50,14 @@ export default function PersistentPlayer({ collections }: { collections: Collect
   const streamUrl = `/api/videos/${video.id}/stream`
   const collection = collections.find(c => c.id === video.collection_id)
   const isFull = mode === 'full'
-  const isMini = mode === 'mini'
+  const isMaximized = isFull && userMaximized
+
+  const handleCanPlay = () => {
+    const seek = consumePendingSeek()
+    if (seek !== null && videoRef.current) {
+      videoRef.current.currentTime = seek
+    }
+  }
 
   // The container changes CSS between modes — the <video> inside never remounts.
   // In mini mode the container is moved off-screen; audio continues, the bar in Layout takes over UI.
@@ -83,12 +86,7 @@ export default function PersistentPlayer({ collections }: { collections: Collect
           autoPlay
           className="w-full h-full"
           style={{ objectFit: 'contain', display: 'block' }}
-          onCanPlay={() => {
-            if (pendingSeekTime.current !== null && videoRef.current) {
-              videoRef.current.currentTime = pendingSeekTime.current
-              pendingSeekTime.current = null
-            }
-          }}
+          onCanPlay={handleCanPlay}
         />
 
         {/* Full mode: title bar with minimize + close */}
@@ -112,7 +110,7 @@ export default function PersistentPlayer({ collections }: { collections: Collect
               </button>
               {/* Maximize (hide panel) / Restore (show panel) */}
               <button
-                onClick={() => setIsMaximized(p => !p)}
+                onClick={() => setUserMaximized(p => !p)}
                 title={isMaximized ? 'Show details panel' : 'Maximize — hide details'}
                 className="w-7 h-7 flex items-center justify-center rounded-lg text-white/70 hover:text-white transition-colors"
               >

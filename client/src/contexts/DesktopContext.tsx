@@ -1,5 +1,5 @@
 import { createContext, useContext, useState } from 'react'
-import { getActiveDesktop, setActiveDesktop } from '@/api/client'
+import { getActiveDesktop, setActiveDesktop } from '@/api'
 
 interface DesktopContextValue {
   desktop: 1 | 2

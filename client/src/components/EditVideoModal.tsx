@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useDownloadPath } from '@/hooks/useDownloadPath'
-import { updateVideo, createCollection } from '@/api/client'
+import { updateVideo, createCollection } from '@/api'
 import { Button, Input, Select, Modal, ColorSwatches, PRESET_COLORS, OutputOptions } from '@/components/ui'
 import type { Video, Collection } from '@/types'
 

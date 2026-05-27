@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isBlockedIp, guardOutboundUrl } from '../util/url-guard.js'
+import { isBlockedIp, guardOutboundUrl } from '../src/utils/url-guard.js'
 
 describe('isBlockedIp', () => {
   it('blocks IPv4 loopback', () => {

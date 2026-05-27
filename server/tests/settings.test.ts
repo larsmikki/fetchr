@@ -1,8 +1,8 @@
 import supertest from 'supertest'
 import { describe, it, expect, beforeEach } from 'vitest'
-import { createApp } from '../app.js'
-import { resetDb } from '../db/connection.js'
-import { runMigrations } from '../db/migrate.js'
+import { createApp } from '../src/app.js'
+import { resetDb } from '../src/db/connection.js'
+import { runMigrations } from '../src/db/migrate.js'
 
 const app = createApp()
 

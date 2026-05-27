@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTheme } from '@/contexts/ThemeContext'
-import { getVideos, deleteVideo } from '@/api/client'
+import { getVideos, deleteVideo } from '@/api'
+import { queryKeys } from '@/queryKeys'
 import VideoCard from '@/components/VideoCard'
 import EditVideoModal from '@/components/EditVideoModal'
 import { usePlayer } from '@/contexts/PlayerContext'
@@ -16,40 +18,39 @@ interface FrontPageProps {
 
 const FETCH_LIMIT = 1000
 const PILL_COLLAPSE_THRESHOLD = 6
+const EMPTY_VIDEOS: Video[] = []
 
 export default function FrontPage({ collections, onAddVideo, refreshKey, onCollectionsChange }: FrontPageProps) {
   const { theme } = useTheme()
-  const [videos, setVideos] = useState<Video[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [filterCollection, setFilterCollection] = useState<number | 'uncategorized' | null>(null)
   const { play } = usePlayer()
   const [editingVideo, setEditingVideo] = useState<Video | null>(null)
 
-  const fetchVideos = useCallback(async (q: string, silent = false) => {
-    if (!silent) setLoading(true)
-    try {
-      const res = await getVideos({
+  const videosParams = useMemo(() => ({
+    page: 1,
+    limit: FETCH_LIMIT,
+    q: search || undefined,
+    collection_id: filterCollection ?? undefined,
+    refreshKey,
+  }), [filterCollection, refreshKey, search])
+  const { data, isLoading: loading } = useQuery({
+    queryKey: queryKeys.videos(videosParams),
+    queryFn: () => getVideos({
         page: 1,
         limit: FETCH_LIMIT,
-        q: q || undefined,
+        q: search || undefined,
         collection_id: filterCollection ?? undefined,
-      })
-      setVideos(res.items)
-      setTotal(res.total)
-    } catch { /* silently fail */ }
-    finally { if (!silent) setLoading(false) }
-  }, [filterCollection])
+    }),
+    refetchInterval: query => query.state.data?.items.some(v => v.fetch_status === 'pending') ? 4000 : false,
+  })
+  const videos = data?.items ?? EMPTY_VIDEOS
+  const total = data?.total ?? 0
 
-  useEffect(() => { fetchVideos(search) }, [search, fetchVideos, refreshKey])
-
-  useEffect(() => {
-    const hasPending = videos.some(v => v.fetch_status === 'pending')
-    if (!hasPending) return
-    const timer = setInterval(() => fetchVideos(search, true), 4000)
-    return () => clearInterval(timer)
-  }, [videos, search, fetchVideos])
+  const invalidateVideos = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['videos'] })
+  }, [queryClient])
 
   const collectionMap = useMemo(() => new Map(collections.map(c => [c.id, c])), [collections])
 
@@ -72,15 +73,10 @@ export default function FrontPage({ collections, onAddVideo, refreshKey, onColle
     return groups.length > 0 ? groups : null
   }, [isGroupedMode, videos, collections])
 
-  const searchRef = useRef(search)
-  searchRef.current = search
-  const fetchVideosRef = useRef(fetchVideos)
-  fetchVideosRef.current = fetchVideos
-
   const handleDelete = useCallback(async (video: Video) => {
     await deleteVideo(video.id)
-    fetchVideosRef.current(searchRef.current)
-  }, [])
+    invalidateVideos()
+  }, [invalidateVideos])
 
   const handleEditVideo = useCallback((video: Video) => setEditingVideo(video), [])
 
@@ -233,7 +229,7 @@ export default function FrontPage({ collections, onAddVideo, refreshKey, onColle
           collections={collections}
           onCollectionsChange={onCollectionsChange}
           onClose={() => setEditingVideo(null)}
-          onSaved={() => { setEditingVideo(null); fetchVideos(search) }}
+          onSaved={() => { setEditingVideo(null); invalidateVideos() }}
         />
       )}
     </div>
@@ -283,4 +279,3 @@ function CollectionGroup({ collection, videos, collectionMap, onClick, onDelete,
     </div>
   )
 }
-

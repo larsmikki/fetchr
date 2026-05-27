@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { resetDb } from '../db/connection.js'
-import { runMigrations } from '../db/migrate.js'
-import { videosRepo } from '../db/repositories/videos.js'
-import { collectionsRepo } from '../db/repositories/collections.js'
-import { settingsRepo } from '../db/repositories/settings.js'
-import { jobsRepo } from '../db/repositories/jobs.js'
+import { resetDb } from '../src/db/connection.js'
+import { runMigrations } from '../src/db/migrate.js'
+import { videosRepo } from '../src/db/repositories/videos.js'
+import { collectionsRepo } from '../src/db/repositories/collections.js'
+import { settingsRepo } from '../src/db/repositories/settings.js'
+import { jobsRepo } from '../src/db/repositories/jobs.js'
 
 beforeEach(async () => {
   await resetDb()

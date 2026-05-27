@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ThemeProvider } from '@/contexts/ThemeContext'
 import { PlayerProvider } from '@/contexts/PlayerContext'
 import { DesktopProvider, useDesktop } from '@/contexts/DesktopContext'
@@ -11,31 +12,24 @@ import FrontPage from '@/pages/FrontPage'
 import CollectionPage from '@/pages/CollectionPage'
 import SettingsPage from '@/pages/SettingsPage'
 import DonatePage from '@/pages/DonatePage'
-import { getCollections } from '@/api/client'
-import type { Collection, Video } from '@/types'
+import { getCollections } from '@/api'
+import { queryKeys } from '@/queryKeys'
+import type { Video } from '@/types'
 
 function AppInner() {
-  const [collections, setCollections] = useState<Collection[]>([])
+  const queryClient = useQueryClient()
   const [showAddVideo, setShowAddVideo] = useState(false)
   const [addVideoCollectionId, setAddVideoCollectionId] = useState<number | undefined>()
   const [refreshKey, setRefreshKey] = useState(0)
 
-  const fetchCollections = useCallback(async () => {
-    try {
-      const res = await getCollections()
-      setCollections(res.items)
-    } catch {
-      // ignore
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchCollections()
-  }, [fetchCollections])
+  const { data: collections = [] } = useQuery({
+    queryKey: queryKeys.collections,
+    queryFn: async () => (await getCollections()).items,
+  })
 
   const handleCollectionsChange = useCallback(() => {
-    fetchCollections()
-  }, [fetchCollections])
+    void queryClient.invalidateQueries({ queryKey: queryKeys.collections })
+  }, [queryClient])
 
   const handleAddVideo = useCallback((collectionId?: number) => {
     setAddVideoCollectionId(collectionId)

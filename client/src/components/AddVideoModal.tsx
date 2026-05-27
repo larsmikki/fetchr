@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useTheme } from '@/contexts/ThemeContext'
-import { addVideo, createCollection } from '@/api/client'
+import { addVideo, createCollection } from '@/api'
 import { useDownloadPath } from '@/hooks/useDownloadPath'
 import { Button, Input, Select, Modal, ColorSwatches, PRESET_COLORS, OutputOptions } from '@/components/ui'
 import type { Collection, Video } from '@/types'

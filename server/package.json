@@ -8,7 +8,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc && cp -r src/db/migrations dist/db/",
     "start": "node dist/index.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@types/archiver": "^7.0.0",
@@ -22,6 +23,7 @@
     "sql.js": "^1.11.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@types/compression": "^1.7.5",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
@@ -29,10 +31,13 @@
     "@types/node": "^22.0.0",
     "@types/node-fetch": "^2.6.11",
     "@types/sql.js": "^1.4.9",
+    "@types/supertest": "^6.0.0",
+    "eslint": "^9.39.4",
+    "globals": "^17.4.0",
+    "supertest": "^7.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "vitest": "^2.0.0",
-    "supertest": "^7.0.0",
-    "@types/supertest": "^6.0.0"
+    "typescript-eslint": "^8.57.0",
+    "vitest": "^2.0.0"
   }
 }

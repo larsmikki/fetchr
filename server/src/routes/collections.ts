@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { collectionsRepo } from '../db/repositories/collections.js';
-import { rewriteSidecarsForCollection } from '../util/sidecar.js';
+import { rewriteSidecarsForCollection } from '../utils/sidecar.js';
 
 const router = Router();
 

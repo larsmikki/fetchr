@@ -49,7 +49,7 @@ function MiniPlayerBar() {
   const togglePlay = () => {
     const el = videoRef.current
     if (!el) return
-    el.paused ? el.play() : el.pause()
+    if (el.paused) el.play(); else el.pause()
   }
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {

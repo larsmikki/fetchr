@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTheme } from '@/contexts/ThemeContext'
-import { getVideos, deleteVideo, deleteCollection, updateCollection, createCollection } from '@/api/client'
+import { getVideos, deleteVideo, deleteCollection, updateCollection, createCollection } from '@/api'
+import { queryKeys } from '@/queryKeys'
 import VideoCard from '@/components/VideoCard'
 import EditVideoModal from '@/components/EditVideoModal'
 import { usePlayer } from '@/contexts/PlayerContext'
@@ -26,16 +28,13 @@ export default function CollectionPage({
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { theme } = useTheme()
+  const queryClient = useQueryClient()
 
   const isUncategorized = id === 'uncategorized'
   const collectionId = isUncategorized ? 'uncategorized' : Number(id)
   const collection = isUncategorized ? null : collections.find(c => c.id === Number(id))
 
-  const [videos, setVideos] = useState<Video[]>([])
-  const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [loading, setLoading] = useState(true)
   const { play } = usePlayer()
   const [editingVideo, setEditingVideo] = useState<Video | null>(null)
 
@@ -51,39 +50,27 @@ export default function CollectionPage({
   const [newColor, setNewColor] = useState(PRESET_COLORS[0])
   const [creating, setCreating] = useState(false)
 
-  const fetchVideos = useCallback(async (p: number, silent = false) => {
-    if (!silent) setLoading(true)
-    try {
-      const res = await getVideos({ collection_id: collectionId, page: p, limit: PAGE_SIZE })
-      setVideos(res.items)
-      setTotal(res.total)
-      setTotalPages(res.totalPages)
-    } catch { /* ignore */ }
-    finally { if (!silent) setLoading(false) }
-  }, [collectionId])
+  const videosParams = useMemo(() => ({ collectionId, page, refreshKey }), [collectionId, page, refreshKey])
+  const { data, isLoading: loading } = useQuery({
+    queryKey: queryKeys.videos(videosParams),
+    queryFn: () => getVideos({ collection_id: collectionId, page, limit: PAGE_SIZE }),
+    refetchInterval: query => query.state.data?.items.some(v => v.fetch_status === 'pending') ? 4000 : false,
+  })
+  const videos = data?.items ?? []
+  const total = data?.total ?? 0
+  const totalPages = data?.totalPages ?? 1
 
-  useEffect(() => {
-    setPage(1)
-    fetchVideos(1)
-  }, [id, fetchVideos, refreshKey])
-
-  useEffect(() => {
-    const hasPending = videos.some(v => v.fetch_status === 'pending')
-    if (!hasPending) return
-    const timer = setInterval(() => fetchVideos(page, true), 4000)
-    return () => clearInterval(timer)
-  }, [videos, page, fetchVideos])
+  const invalidateVideos = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['videos'] })
+  }, [queryClient])
 
   const collectionMap = useMemo(() => new Map(collections.map(c => [c.id, c])), [collections])
 
-  const pageRef = useRef(page)
-  pageRef.current = page
-
   const handleDelete = useCallback(async (video: Video) => {
     await deleteVideo(video.id)
-    fetchVideos(pageRef.current)
+    invalidateVideos()
     onCollectionsChange()
-  }, [fetchVideos, onCollectionsChange])
+  }, [invalidateVideos, onCollectionsChange])
 
   const handleEditVideo = useCallback((video: Video) => setEditingVideo(video), [])
 
@@ -223,7 +210,7 @@ export default function CollectionPage({
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => { setPage(p => Math.max(1, p - 1)); fetchVideos(Math.max(1, page - 1)) }}
+            onClick={() => setPage(p => Math.max(1, p - 1))}
             disabled={page === 1}
           >
             Previous
@@ -232,7 +219,7 @@ export default function CollectionPage({
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => { setPage(p => Math.min(totalPages, p + 1)); fetchVideos(Math.min(totalPages, page + 1)) }}
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
           >
             Next
@@ -246,7 +233,7 @@ export default function CollectionPage({
           collections={collections}
           onCollectionsChange={onCollectionsChange}
           onClose={() => setEditingVideo(null)}
-          onSaved={() => { setEditingVideo(null); fetchVideos(page); onCollectionsChange() }}
+          onSaved={() => { setEditingVideo(null); invalidateVideos(); onCollectionsChange() }}
         />
       )}
 

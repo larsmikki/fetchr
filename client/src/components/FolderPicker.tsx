@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/contexts/ThemeContext'
 
 interface BrowseEntry { name: string; path: string }
@@ -16,27 +17,19 @@ interface Props {
 
 export default function FolderPicker({ onSelect, onClose }: Props) {
   const { theme } = useTheme()
-  const [result, setResult] = useState<BrowseResult | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [path, setPath] = useState<string | undefined>()
 
-  const navigate = useCallback(async (path?: string) => {
-    setLoading(true)
-    setError(null)
-    try {
+  const { data: result = null, isLoading: loading, error } = useQuery({
+    queryKey: ['folder-picker', path],
+    queryFn: async () => {
       const url = path ? `/api/browse?path=${encodeURIComponent(path)}` : '/api/browse'
       const res = await fetch(url)
       const data = await res.json() as BrowseResult & { error?: string }
       if (!res.ok) throw new Error(data.error ?? 'Failed to load')
-      setResult(data)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load directory')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { navigate() }, [navigate])
+      return data
+    },
+  })
+  const navigate = (nextPath?: string) => setPath(nextPath)
 
   const inputStyle = {
     background: theme.surface2,
@@ -84,7 +77,9 @@ export default function FolderPicker({ onSelect, onClose }: Props) {
             <div style={{ padding: '32px 20px', textAlign: 'center', color: theme.text2, fontSize: 14 }}>Loading…</div>
           )}
           {error && (
-            <div style={{ padding: '16px 20px', color: '#ef4444', fontSize: 13 }}>{error}</div>
+            <div style={{ padding: '16px 20px', color: '#ef4444', fontSize: 13 }}>
+              {error instanceof Error ? error.message : 'Failed to load directory'}
+            </div>
           )}
           {!loading && !error && result?.entries.length === 0 && (
             <div style={{ padding: '32px 20px', textAlign: 'center', color: theme.text2, fontSize: 13 }}>No subfolders</div>

@@ -4,7 +4,7 @@ import { videosRepo } from '../db/repositories/videos.js';
 import { collectionsRepo } from '../db/repositories/collections.js';
 import { jobsRepo } from '../db/repositories/jobs.js';
 import { config } from '../config.js';
-import { deleteSidecar } from '../util/sidecar.js';
+import { deleteSidecar } from '../utils/sidecar.js';
 import type { Video } from '../types/index.js';
 
 async function removeVideoArtifacts(videoId: number, localPath: string | null): Promise<void> {

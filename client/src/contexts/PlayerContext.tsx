@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import type { RefObject, ReactNode, MutableRefObject } from 'react'
+import type { RefObject, ReactNode } from 'react'
 import type { Video } from '@/types'
-import { getVideoById } from '@/api/client'
+import { getVideoById } from '@/api'
 
 export type PlayerMode = 'full' | 'mini' | 'closed'
 
@@ -10,7 +10,7 @@ interface PlayerContextValue {
   mode: PlayerMode
   videoRef: RefObject<HTMLVideoElement | null>
   musicMode: boolean
-  pendingSeekTime: MutableRefObject<number | null>
+  consumePendingSeek: () => number | null
   play: (video: Video) => void
   minimize: () => void
   expand: () => void
@@ -33,7 +33,7 @@ export function PlayerProvider({ children, desktop }: { children: ReactNode; des
   const videoRef = useRef<HTMLVideoElement>(null)
   const pendingSeekTime = useRef<number | null>(null)
   const musicModeRef = useRef(musicMode)
-  musicModeRef.current = musicMode
+  useEffect(() => { musicModeRef.current = musicMode })
 
   // On mount: restore last video if music mode was on
   useEffect(() => {
@@ -100,10 +100,16 @@ export function PlayerProvider({ children, desktop }: { children: ReactNode; des
     })
   }, [storageKey])
 
+  const consumePendingSeek = useCallback(() => {
+    const t = pendingSeekTime.current
+    pendingSeekTime.current = null
+    return t
+  }, [])
+
   const value = useMemo(() => ({
-    video, mode, videoRef, musicMode, pendingSeekTime,
+    video, mode, videoRef, musicMode, consumePendingSeek,
     play, minimize, expand, close, toggleMusicMode,
-  }), [video, mode, musicMode, play, minimize, expand, close, toggleMusicMode])
+  }), [video, mode, musicMode, play, minimize, expand, close, toggleMusicMode, consumePendingSeek])
 
   return (
     <PlayerContext.Provider value={value}>

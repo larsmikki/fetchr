@@ -1,13 +1,13 @@
 import supertest from 'supertest'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { createApp } from '../app.js'
-import { resetDb } from '../db/connection.js'
-import { runMigrations } from '../db/migrate.js'
-import { jobsRepo } from '../db/repositories/jobs.js'
-import { drainJobsForTest } from '../services/jobs.service.js'
-import { videosRepo } from '../db/repositories/videos.js'
+import { createApp } from '../src/app.js'
+import { resetDb } from '../src/db/connection.js'
+import { runMigrations } from '../src/db/migrate.js'
+import { jobsRepo } from '../src/db/repositories/jobs.js'
+import { drainJobsForTest } from '../src/services/jobs.service.js'
+import { videosRepo } from '../src/db/repositories/videos.js'
 
-vi.mock('../services/extractor.service.js', () => ({
+vi.mock('../src/services/extractor.service.js', () => ({
   extractVideoInfo: vi.fn().mockResolvedValue({
     title: 'Job Mock',
     description: null,

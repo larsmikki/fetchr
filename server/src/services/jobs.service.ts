@@ -7,7 +7,7 @@ import { settingsRepo } from '../db/repositories/settings.js';
 import { config } from '../config.js';
 import { errorMessage, isRecoverableDbError, reloadDb } from '../db/connection.js';
 import { extractVideoInfo, downloadToPath, downloadMp3ToPath } from './extractor.service.js';
-import { writeSidecarForVideo } from '../util/sidecar.js';
+import { writeSidecarForVideo } from '../utils/sidecar.js';
 
 export interface JobEvent {
   job: Job;
@@ -34,6 +34,7 @@ interface IngestPayload {
 
 function sanitizeForFilename(name: string): string {
   return name
+    // eslint-disable-next-line no-control-regex
     .replace(/[<>:"|?*\x00-\x1f\\/]/g, '_')
     .replace(/[. ]+$/g, '')
     .trim();

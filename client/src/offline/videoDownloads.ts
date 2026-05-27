@@ -81,7 +81,7 @@ export function useOfflineState(id: number): OfflineState {
 export function useOfflineHydrated(): boolean {
   const [ready, setReady] = useState(initialized)
   useEffect(() => {
-    if (initialized) { setReady(true); return }
+    if (initialized) return
     void hydrate().then(() => setReady(true))
   }, [])
   return ready

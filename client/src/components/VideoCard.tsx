@@ -1,6 +1,6 @@
 import { memo, useEffect, useState } from 'react'
 import { useTheme } from '@/contexts/ThemeContext'
-import { thumbnailUrl } from '@/api/client'
+import { thumbnailUrl } from '@/api'
 import { useActiveVideoJob, JOB_KIND_LABEL } from '@/contexts/JobsContext'
 import { usePlayer } from '@/contexts/PlayerContext'
 import {

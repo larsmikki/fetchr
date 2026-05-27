@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { settingsRepo } from '../db/repositories/settings.js';
 import { getDb } from '../db/connection.js';
 import { allRows } from '../db/repositories/rows.js';
-import { writeSidecarForVideo } from '../util/sidecar.js';
+import { writeSidecarForVideo } from '../utils/sidecar.js';
 
 const router = Router();
 

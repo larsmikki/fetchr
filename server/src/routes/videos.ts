@@ -15,8 +15,8 @@ import {
   deleteVideoCascade,
   cleanupAndRetryVideo,
 } from '../services/videoIngestion.service.js';
-import { guardOutboundUrl } from '../util/url-guard.js';
-import { writeSidecarForVideo, deleteSidecar } from '../util/sidecar.js';
+import { guardOutboundUrl } from '../utils/url-guard.js';
+import { writeSidecarForVideo, deleteSidecar } from '../utils/sidecar.js';
 
 const router = Router();
 
