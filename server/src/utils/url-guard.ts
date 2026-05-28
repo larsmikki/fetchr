@@ -1,26 +1,36 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 
-const PRIVATE_V4_RANGES: Array<[number, number, number]> = [
-  [10, 0, 8],
-  [127, 0, 8],
-  [169, 254, 16],
-  [172, 16, 12],
-  [192, 168, 16],
-  [0, 0, 8],
+// CIDR ranges that must NOT be reachable from server-initiated fetches (SSRF
+// protection). Each entry is [network base, prefix length].
+const PRIVATE_V4_CIDRS: Array<[string, number]> = [
+  ['10.0.0.0', 8],
+  ['127.0.0.0', 8],
+  ['169.254.0.0', 16],
+  ['172.16.0.0', 12],
+  ['192.168.0.0', 16],
+  ['0.0.0.0', 8],
 ];
 
-function v4InRange(ip: string, prefix: [number, number, number]): boolean {
+function ipv4ToInt(ip: string): number | null {
   const parts = ip.split('.').map(Number);
-  if (parts.length !== 4 || parts.some(n => Number.isNaN(n))) return false;
-  const [a, b, bits] = prefix;
-  if (bits >= 8 && parts[0] !== a) return false;
-  if (bits >= 16 && parts[1] !== b) return false;
-  return true;
+  if (parts.length !== 4 || parts.some(n => Number.isNaN(n) || n < 0 || n > 255)) return null;
+  // Use unsigned shift to keep result non-negative
+  return ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+}
+
+function v4InCidr(ip: string, cidr: [string, number]): boolean {
+  const ipInt = ipv4ToInt(ip);
+  const netInt = ipv4ToInt(cidr[0]);
+  if (ipInt == null || netInt == null) return false;
+  const bits = cidr[1];
+  if (bits === 0) return true;
+  const mask = (0xffffffff << (32 - bits)) >>> 0;
+  return (ipInt & mask) === (netInt & mask);
 }
 
 function isBlockedV4(ip: string): boolean {
-  if (PRIVATE_V4_RANGES.some(r => v4InRange(ip, r))) return true;
+  if (PRIVATE_V4_CIDRS.some(r => v4InCidr(ip, r))) return true;
   const first = Number(ip.split('.')[0]);
   if (first >= 224) return true; // multicast + reserved
   return false;

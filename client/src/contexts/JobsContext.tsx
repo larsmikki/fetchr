@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 
-export type JobKind = 'extract_metadata' | 'download_video' | 'download_mp3' | 'copy_to_output'
-export type JobStatus = 'pending' | 'running' | 'ok' | 'error' | 'cancelled'
+export type JobKind = 'extract_metadata' | 'download_video' | 'download_mp3' | 'copy_to_output' | 'fetch_thumbnail'
+export type JobStatus = 'pending' | 'running' | 'ok' | 'error' | 'cancelled' | 'ignored'
 
 export interface Job {
   id: number
@@ -108,4 +108,5 @@ export const JOB_KIND_LABEL: Record<JobKind, string> = {
   download_video: 'Downloading…',
   download_mp3: 'Exporting MP3…',
   copy_to_output: 'Copying file…',
+  fetch_thumbnail: 'Fetching thumbnail…',
 }

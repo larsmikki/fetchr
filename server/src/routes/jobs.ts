@@ -57,6 +57,17 @@ router.post('/:id/cancel', (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// POST /api/jobs/:id/ignore — dismiss a failed/cancelled job so it stops appearing in the queue
+router.post('/:id/ignore', (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const ok = jobsRepo.ignore(id);
+  if (!ok) {
+    res.status(409).json({ error: 'Job not found or not in a dismissable state' });
+    return;
+  }
+  res.json({ ok: true });
+});
+
 // POST /api/jobs/:id/retry — requeue a failed job
 router.post('/:id/retry', (req: Request, res: Response) => {
   const id = Number(req.params.id);

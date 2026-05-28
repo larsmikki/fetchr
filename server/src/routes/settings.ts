@@ -3,7 +3,8 @@ import { writeFile, stat, unlink } from 'node:fs/promises';
 import { settingsRepo } from '../db/repositories/settings.js';
 import { getDb } from '../db/connection.js';
 import { allRows } from '../db/repositories/rows.js';
-import { writeSidecarForVideo } from '../utils/sidecar.js';
+import { writeSidecarForVideo, importSidecars } from '../utils/sidecar.js';
+import { jobsRepo } from '../db/repositories/jobs.js';
 import { config } from '../config.js';
 
 const router = Router();
@@ -70,6 +71,33 @@ router.post('/regenerate-sidecars', async (_req: Request, res: Response) => {
     }
   }
   res.json({ written, failed, total: rows.length });
+});
+
+router.post('/import-sidecars', async (_req: Request, res: Response) => {
+  try {
+    const result = await importSidecars();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// Enqueue a fetch_thumbnail job for every video that has a page URL but no
+// thumbnail. Pass ?all=1 to re-fetch for every video regardless.
+router.post('/refresh-thumbnails', async (req: Request, res: Response) => {
+  const all = req.query.all === '1' || req.query.all === 'true';
+  const sql = all
+    ? 'SELECT id, page_url FROM videos WHERE page_url IS NOT NULL AND page_url != ""'
+    : 'SELECT id, page_url FROM videos WHERE page_url IS NOT NULL AND page_url != "" AND (thumbnail_url IS NULL OR thumbnail_url = "")';
+  const rows = allRows<{ id: number; page_url: string }>(getDb().exec(sql));
+  for (const row of rows) {
+    jobsRepo.enqueue({
+      videoId: row.id,
+      kind: 'fetch_thumbnail',
+      payload: { url: row.page_url },
+    });
+  }
+  res.json({ enqueued: rows.length });
 });
 
 export default router;

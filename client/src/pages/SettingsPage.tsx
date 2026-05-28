@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useTheme } from '@/contexts/ThemeContext'
 import ThemePicker from '@/components/ThemePicker'
 import FolderPicker from '@/components/FolderPicker'
-import { getSettings, updateSettings, exportData, importData, downloadAllVideos, regenerateSidecars, cancelJob, retryJob, cleanupAndRetryVideo, getFailedJobs, getCookieStatus, uploadCookies, deleteCookies } from '@/api'
-import { Button, Input, Surface } from '@/components/ui'
+import { getSettings, updateSettings, exportData, importData, downloadAllVideos, regenerateSidecars, importSidecars, refreshThumbnails, cancelJob, retryJob, ignoreJob, cleanupAndRetryVideo, getFailedJobs, getCookieStatus, uploadCookies, deleteCookies } from '@/api'
+import { Button, Input, Surface, ConfirmDialog } from '@/components/ui'
 import { useJobs, JOB_KIND_LABEL, type Job } from '@/contexts/JobsContext'
 
 function formatAge(updatedAt: string): string {
@@ -81,6 +81,14 @@ function JobsPanel() {
     finally { setBusyId(null); refreshFailed() }
   }
 
+  const handleIgnore = async (job: Job) => {
+    setBusyId(job.id)
+    setError(null)
+    try { await ignoreJob(job.id) }
+    catch (e) { setError(e instanceof Error ? e.message : 'Ignore failed') }
+    finally { setBusyId(null); refreshFailed() }
+  }
+
   return (
     <Surface className="p-6 mb-5">
       <h2 className="text-base font-bold mb-1" style={{ color: theme.text }}>Job queue</h2>
@@ -132,18 +140,23 @@ function JobsPanel() {
                 </div>
                 <div className="flex gap-2 shrink-0">
                   {canCancel && (
-                    <Button variant="secondary" onClick={() => handleCancel(job)} disabled={busyId === job.id}>
+                    <Button variant="ghost" size="sm" onClick={() => handleCancel(job)} disabled={busyId === job.id}>
                       Cancel
                     </Button>
                   )}
                   {canRetry && (
-                    <Button variant="secondary" onClick={() => handleRetry(job)} disabled={busyId === job.id}>
+                    <Button variant="primary" size="sm" onClick={() => handleRetry(job)} disabled={busyId === job.id}>
                       Retry
                     </Button>
                   )}
-                  {job.video_id != null && (
-                    <Button variant="secondary" onClick={() => handleCleanupRetry(job)} disabled={busyId === job.id}>
+                  {canRetry && job.video_id != null && (
+                    <Button variant="danger" size="sm" onClick={() => handleCleanupRetry(job)} disabled={busyId === job.id}>
                       Clean & retry
+                    </Button>
+                  )}
+                  {canRetry && (
+                    <Button variant="ghost" size="sm" onClick={() => handleIgnore(job)} disabled={busyId === job.id}>
+                      Ignore
                     </Button>
                   )}
                 </div>
@@ -180,6 +193,11 @@ export default function SettingsPage() {
   const [browse, setBrowse] = useState<'download' | 'ffmpeg' | null>(null)
   const [sidecarStatus, setSidecarStatus] = useState<string | null>(null)
   const [sidecarLoading, setSidecarLoading] = useState(false)
+  const [importSidecarStatus, setImportSidecarStatus] = useState<string | null>(null)
+  const [importSidecarLoading, setImportSidecarLoading] = useState(false)
+  const [importSidecarConfirmOpen, setImportSidecarConfirmOpen] = useState(false)
+  const [thumbsStatus, setThumbsStatus] = useState<string | null>(null)
+  const [thumbsLoading, setThumbsLoading] = useState(false)
 
   useEffect(() => {
     getSettings().then(s => {
@@ -281,6 +299,42 @@ export default function SettingsPage() {
       setTimeout(() => setSidecarStatus(null), 4000)
     } finally {
       setSidecarLoading(false)
+    }
+  }
+
+  const handleRefreshThumbnails = async (all: boolean) => {
+    setThumbsLoading(true)
+    setThumbsStatus(null)
+    try {
+      const r = await refreshThumbnails(all)
+      setThumbsStatus(r.enqueued === 0
+        ? 'No videos needed a thumbnail refresh.'
+        : `Queued ${r.enqueued} thumbnail job${r.enqueued !== 1 ? 's' : ''}.`)
+      setTimeout(() => setThumbsStatus(null), 6000)
+    } catch (err) {
+      setThumbsStatus(err instanceof Error ? err.message : 'Failed')
+      setTimeout(() => setThumbsStatus(null), 6000)
+    } finally {
+      setThumbsLoading(false)
+    }
+  }
+
+  const runImportSidecars = async () => {
+    setImportSidecarLoading(true)
+    setImportSidecarStatus(null)
+    try {
+      const r = await importSidecars()
+      const parts = [`Imported ${r.imported} of ${r.total}`]
+      if (r.replaced > 0) parts.push(`${r.replaced} replaced`)
+      if (r.skippedNoMedia > 0) parts.push(`${r.skippedNoMedia} skipped (no media)`)
+      if (r.failed > 0) parts.push(`${r.failed} failed`)
+      setImportSidecarStatus(parts.join(', '))
+      setTimeout(() => setImportSidecarStatus(null), 6000)
+    } catch (err) {
+      setImportSidecarStatus(err instanceof Error ? err.message : 'Failed')
+      setTimeout(() => setImportSidecarStatus(null), 6000)
+    } finally {
+      setImportSidecarLoading(false)
     }
   }
 
@@ -531,9 +585,17 @@ export default function SettingsPage() {
             <Button variant="secondary" onClick={downloadAllVideos}>Download all videos</Button>
           </div>
 
-          <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${theme.border}` }}>
+        </Surface>
+
+        <Surface className="p-6 mb-5">
+          <h2 className="text-base font-bold mb-1" style={{ color: theme.text }}>Sidecars</h2>
+          <p className="text-xs mb-5" style={{ color: theme.text2 }}>
+            Each downloaded video gets a JSON sidecar (title, site, collection, page URL) next to the media file. Sidecars are written automatically — use these tools to backfill or restore.
+          </p>
+
+          <div>
             <p className="text-xs mb-3" style={{ color: theme.text2 }}>
-              Write a JSON sidecar (title, site, collection, page URL) next to every locally downloaded video. Sidecars are kept up to date automatically — run this once to backfill the existing library.
+              Write a JSON sidecar next to every locally downloaded video. Run this once to backfill the existing library.
             </p>
             <div className="flex flex-wrap gap-2 items-center">
               <Button variant="secondary" onClick={handleRegenerateSidecars} disabled={sidecarLoading}>
@@ -544,8 +606,48 @@ export default function SettingsPage() {
               )}
             </div>
           </div>
+
+          <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${theme.border}` }}>
+            <p className="text-xs mb-3" style={{ color: theme.text2 }}>
+              Restore videos from a backup by scanning the videos folder. Each <code style={{ color: theme.accent }}>{'<id>.<ext>.json'}</code> sidecar with a matching media file is imported, reusing its original id. On conflict (same id or page URL), the existing row is replaced.
+            </p>
+            <div className="flex flex-wrap gap-2 items-center">
+              <Button variant="secondary" onClick={() => setImportSidecarConfirmOpen(true)} disabled={importSidecarLoading}>
+                {importSidecarLoading ? 'Importing...' : 'Import from sidecars'}
+              </Button>
+              {importSidecarStatus && (
+                <span className="text-sm font-medium" style={{ color: theme.accent }}>{importSidecarStatus}</span>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${theme.border}` }}>
+            <p className="text-xs mb-3" style={{ color: theme.text2 }}>
+              Re-fetch the thumbnail for every video by querying its original page URL. Useful after a sidecar import. Videos are not redownloaded — only the thumbnail URL is refreshed.
+            </p>
+            <div className="flex flex-wrap gap-2 items-center">
+              <Button variant="secondary" onClick={() => handleRefreshThumbnails(false)} disabled={thumbsLoading}>
+                {thumbsLoading ? 'Queuing...' : 'Refresh missing thumbnails'}
+              </Button>
+              <Button variant="secondary" onClick={() => handleRefreshThumbnails(true)} disabled={thumbsLoading}>
+                Refresh all thumbnails
+              </Button>
+              {thumbsStatus && (
+                <span className="text-sm font-medium" style={{ color: theme.accent }}>{thumbsStatus}</span>
+              )}
+            </div>
+          </div>
         </Surface>
       </div>
+
+      <ConfirmDialog
+        open={importSidecarConfirmOpen}
+        title="Import from sidecars"
+        message="Scan the videos folder for sidecar JSON files and import them? Existing rows that conflict (same id or page URL) will be replaced from the sidecar."
+        confirmLabel="Import"
+        onConfirm={runImportSidecars}
+        onClose={() => setImportSidecarConfirmOpen(false)}
+      />
 
       {browse && (
         <FolderPicker

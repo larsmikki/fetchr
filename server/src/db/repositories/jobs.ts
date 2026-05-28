@@ -1,8 +1,8 @@
 import { getDb, markDirty } from '../connection.js';
 import { firstRow, allRows, scalar } from './rows.js';
 
-export type JobKind = 'extract_metadata' | 'download_video' | 'download_mp3' | 'copy_to_output';
-export type JobStatus = 'pending' | 'running' | 'ok' | 'error' | 'cancelled';
+export type JobKind = 'extract_metadata' | 'download_video' | 'download_mp3' | 'copy_to_output' | 'fetch_thumbnail';
+export type JobStatus = 'pending' | 'running' | 'ok' | 'error' | 'cancelled' | 'ignored';
 
 export interface Job {
   id: number;
@@ -99,6 +99,19 @@ export const jobsRepo = {
     if (!job || job.status === 'ok' || job.status === 'cancelled') return false;
     db.run(
       `UPDATE jobs SET status = 'cancelled', updated_at = datetime('now') WHERE id = $id`,
+      { $id: id },
+    );
+    markDirty();
+    return true;
+  },
+
+  ignore(id: number): boolean {
+    const db = getDb();
+    const job = this.findById(id);
+    if (!job) return false;
+    if (job.status !== 'error' && job.status !== 'cancelled') return false;
+    db.run(
+      `UPDATE jobs SET status = 'ignored', updated_at = datetime('now') WHERE id = $id`,
       { $id: id },
     );
     markDirty();

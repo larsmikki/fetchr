@@ -80,6 +80,11 @@ export default function FrontPage({ collections, onAddVideo, refreshKey, onColle
 
   const handleEditVideo = useCallback((video: Video) => setEditingVideo(video), [])
 
+  const handleVideoMoved = useCallback(() => {
+    invalidateVideos()
+    onCollectionsChange()
+  }, [invalidateVideos, onCollectionsChange])
+
   const showDropdown = collections.length > PILL_COLLAPSE_THRESHOLD
 
   return (
@@ -204,6 +209,7 @@ export default function FrontPage({ collections, onAddVideo, refreshKey, onColle
               onClick={play}
               onDelete={handleDelete}
               onEdit={handleEditVideo}
+              onMoved={handleVideoMoved}
             />
           ))}
         </div>
@@ -218,6 +224,7 @@ export default function FrontPage({ collections, onAddVideo, refreshKey, onColle
               onDelete={handleDelete}
               onEdit={handleEditVideo}
               showCollection={true}
+              onMoved={handleVideoMoved}
             />
           ))}
         </div>
@@ -243,9 +250,10 @@ interface GroupProps {
   onClick: (video: Video) => void
   onDelete: (video: Video) => void
   onEdit: (video: Video) => void
+  onMoved?: () => void
 }
 
-function CollectionGroup({ collection, videos, collectionMap, onClick, onDelete, onEdit }: GroupProps) {
+function CollectionGroup({ collection, videos, collectionMap, onClick, onDelete, onEdit, onMoved }: GroupProps) {
   const { theme } = useTheme()
   return (
     <div>
@@ -273,6 +281,7 @@ function CollectionGroup({ collection, videos, collectionMap, onClick, onDelete,
             onDelete={onDelete}
             onEdit={onEdit}
             showCollection={false}
+            onMoved={onMoved}
           />
         ))}
       </div>

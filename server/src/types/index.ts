@@ -23,6 +23,7 @@ export interface Video {
   fetch_error: string | null;
   notes: string | null;
   local_path: string | null;
+  desktop_id: 1 | 2;
 }
 
 export interface ExtractedInfo {

@@ -1,9 +1,10 @@
 import { memo, useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTheme } from '@/contexts/ThemeContext'
-import { thumbnailUrl, cleanupAndRetryVideo } from '@/api'
+import { thumbnailUrl, cleanupAndRetryVideo, refreshVideoThumbnail, bulkMoveVideos } from '@/api'
 import { useActiveVideoJob, JOB_KIND_LABEL } from '@/contexts/JobsContext'
 import { usePlayer } from '@/contexts/PlayerContext'
+import { useDesktop } from '@/contexts/DesktopContext'
 import {
   downloadVideo,
   removeOfflineVideo,
@@ -26,6 +27,7 @@ interface VideoCardProps {
   onEdit: (video: Video) => void
   collectionMap: Map<number, Collection>
   showCollection?: boolean
+  onMoved?: () => void
 }
 
 const VideoCard = memo(function VideoCard({
@@ -35,9 +37,13 @@ const VideoCard = memo(function VideoCard({
   onEdit,
   collectionMap,
   showCollection = true,
+  onMoved,
 }: VideoCardProps) {
   const { theme } = useTheme()
   const queryClient = useQueryClient()
+  const { desktop } = useDesktop()
+  const targetDesktop: 1 | 2 = desktop === 1 ? 2 : 1
+  const [moving, setMoving] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [imgError, setImgError] = useState(false)
   const [retrying, setRetrying] = useState(false)
@@ -72,6 +78,28 @@ const VideoCard = memo(function VideoCard({
     if (window.confirm('Delete this video?')) onDelete(video)
   }
   const handleEdit = (e: React.MouseEvent) => { e.stopPropagation(); setMenuOpen(false); onEdit(video) }
+  const [refreshThumbStatus, setRefreshThumbStatus] = useState<'idle' | 'queued' | 'error'>('idle')
+  const handleRefreshThumb = async (e: React.MouseEvent) => {
+    e.stopPropagation(); setMenuOpen(false)
+    setRefreshThumbStatus('idle')
+    try {
+      await refreshVideoThumbnail(video.id)
+      setRefreshThumbStatus('queued')
+      setTimeout(() => setRefreshThumbStatus('idle'), 2500)
+    } catch {
+      setRefreshThumbStatus('error')
+      setTimeout(() => setRefreshThumbStatus('idle'), 4000)
+    }
+  }
+  const handleMove = async (e: React.MouseEvent) => {
+    e.stopPropagation(); setMenuOpen(false)
+    setMoving(true)
+    try {
+      await bulkMoveVideos([video.id], targetDesktop)
+      onMoved?.()
+    } catch { /* ignore */ }
+    finally { setMoving(false) }
+  }
   const handleRetry = async (e: React.MouseEvent) => {
     e.stopPropagation(); setMenuOpen(false)
     setRetrying(true)
@@ -133,6 +161,17 @@ const VideoCard = memo(function VideoCard({
       }}
       onClick={() => onClick(video)}
     >
+      {refreshThumbStatus !== 'idle' && (
+        <div
+          className="absolute top-2 left-1/2 -translate-x-1/2 z-20 px-2.5 py-1 rounded-full text-[11px] font-medium shadow"
+          style={{
+            background: refreshThumbStatus === 'queued' ? theme.accent : '#e11d48',
+            color: '#fff',
+          }}
+        >
+          {refreshThumbStatus === 'queued' ? 'Thumbnail refresh queued' : 'Refresh failed'}
+        </div>
+      )}
       <div className="relative aspect-video bg-black" style={{ background: theme.surface2, overflow: 'hidden', borderRadius: '12px 12px 0 0' }}>
         {isPending ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4">
@@ -329,6 +368,10 @@ const VideoCard = memo(function VideoCard({
                     </button>
                   )}
                   <button onClick={handleEdit} className="w-full text-left px-3 py-1.5 text-sm transition-colors hover:opacity-80" style={{ color: theme.text }}>Edit</button>
+                  <button onClick={handleRefreshThumb} className="w-full text-left px-3 py-1.5 text-sm transition-colors hover:opacity-80" style={{ color: theme.text }}>Refresh thumbnail</button>
+                  <button onClick={handleMove} disabled={moving} className="w-full text-left px-3 py-1.5 text-sm transition-colors hover:opacity-80 disabled:opacity-60" style={{ color: theme.text }}>
+                    {moving ? 'Moving…' : `Move to Desk ${targetDesktop}`}
+                  </button>
                   <button
                     onClick={handleOfflineToggle}
                     disabled={offline.status === 'downloading'}

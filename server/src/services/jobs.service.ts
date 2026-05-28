@@ -141,11 +141,38 @@ async function runCopyToOutput(job: Job): Promise<void> {
   emit(job.id);
 }
 
+async function runFetchThumbnail(job: Job): Promise<void> {
+  const videoId = job.video_id!;
+  const payload = JSON.parse(job.payload ?? '{}') as { url: string };
+
+  jobsRepo.setProgress(job.id, 0.2);
+  emit(job.id);
+
+  const info = await extractVideoInfo(payload.url);
+  const existing = videosRepo.findById(videoId);
+
+  // Refresh metadata that's cheap to get from yt-dlp's --dump-json, but never
+  // touch local_path / fetch_status — this job is for already-downloaded videos.
+  videosRepo.update(videoId, {
+    thumbnailUrl: info.thumbnail_url,
+    title: existing?.title ?? info.title,
+    description: existing?.description ?? info.description,
+    duration: existing?.duration ?? info.duration,
+    site: existing?.site ?? info.site,
+  });
+  await writeSidecarForVideo(videoId);
+
+  jobsRepo.setProgress(job.id, 1);
+  jobsRepo.markComplete(job.id);
+  emit(job.id);
+}
+
 const HANDLERS: Record<JobKind, (job: Job) => Promise<void>> = {
   extract_metadata: runExtractMetadata,
   download_video: runDownloadVideo,
   download_mp3: runDownloadMp3,
   copy_to_output: runCopyToOutput,
+  fetch_thumbnail: runFetchThumbnail,
 };
 
 let running = false;

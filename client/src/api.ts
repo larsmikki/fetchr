@@ -107,6 +107,17 @@ export function refreshVideo(id: number): Promise<Video> {
   return request(`/api/videos/${id}/refresh`, { method: 'POST' })
 }
 
+export function refreshVideoThumbnail(id: number): Promise<{ ok: boolean }> {
+  return request(`/api/videos/${id}/refresh-thumbnail`, { method: 'POST' })
+}
+
+export function bulkMoveVideos(ids: number[], desktopId: 1 | 2): Promise<{ moved: number; movedCollections: number; requested: number }> {
+  return request('/api/videos/bulk-move', {
+    method: 'POST',
+    body: JSON.stringify({ ids, desktop_id: desktopId }),
+  })
+}
+
 export function redownloadVideo(id: number): Promise<{ ok: boolean }> {
   return request(`/api/videos/${id}/redownload`, { method: 'POST' })
 }
@@ -142,6 +153,10 @@ export function cancelJob(id: number): Promise<{ ok: boolean }> {
   return request(`/api/jobs/${id}/cancel`, { method: 'POST' })
 }
 
+export function ignoreJob(id: number): Promise<{ ok: boolean }> {
+  return request(`/api/jobs/${id}/ignore`, { method: 'POST' })
+}
+
 export function cleanupAndRetryVideo(id: number): Promise<{ ok: boolean }> {
   return request(`/api/videos/${id}/cleanup-retry`, { method: 'POST' })
 }
@@ -169,6 +184,14 @@ export function updateSettings(data: Record<string, string>): Promise<void> {
 
 export function regenerateSidecars(): Promise<{ written: number; failed: number; total: number }> {
   return request('/api/settings/regenerate-sidecars', { method: 'POST' })
+}
+
+export function importSidecars(): Promise<{ imported: number; replaced: number; skippedNoMedia: number; failed: number; total: number }> {
+  return request('/api/settings/import-sidecars', { method: 'POST' })
+}
+
+export function refreshThumbnails(all = false): Promise<{ enqueued: number }> {
+  return request(`/api/settings/refresh-thumbnails${all ? '?all=1' : ''}`, { method: 'POST' })
 }
 
 export function getCookieStatus(): Promise<{ present: boolean; size: number; updatedAt: string | null }> {

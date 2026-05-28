@@ -5,6 +5,7 @@ import fetch from 'node-fetch';
 import { videosRepo } from '../db/repositories/videos.js';
 import { collectionsRepo } from '../db/repositories/collections.js';
 import { jobsRepo } from '../db/repositories/jobs.js';
+import { getDb, markDirty } from '../db/connection.js';
 import { getStreamUrl, extractVideoInfo } from '../services/extractor.service.js';
 import {
   ingestNewVideo,
@@ -316,6 +317,106 @@ router.put('/:id', async (req: Request, res: Response) => {
   }
 
   res.json(updated);
+});
+
+// POST /api/videos/:id/refresh-thumbnail — enqueue a fetch_thumbnail job
+router.post('/:id/refresh-thumbnail', (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const video = videosRepo.findById(id);
+  if (!video) {
+    res.status(404).json({ error: 'Video not found' });
+    return;
+  }
+  if (!video.page_url) {
+    res.status(400).json({ error: 'Video has no page URL' });
+    return;
+  }
+  jobsRepo.enqueue({
+    videoId: id,
+    kind: 'fetch_thumbnail',
+    payload: { url: video.page_url },
+  });
+  res.json({ ok: true });
+});
+
+// POST /api/videos/bulk-move — move many videos to another desktop
+router.post('/bulk-move', async (req: Request, res: Response) => {
+  const body = req.body as { ids?: unknown; desktop_id?: unknown };
+  const desktopId = Number(body.desktop_id);
+  if (desktopId !== 1 && desktopId !== 2) {
+    res.status(400).json({ error: 'desktop_id must be 1 or 2' });
+    return;
+  }
+  if (!Array.isArray(body.ids) || body.ids.length === 0) {
+    res.status(400).json({ error: 'ids must be a non-empty array' });
+    return;
+  }
+  const ids = body.ids.map(Number).filter(n => Number.isInteger(n) && n > 0);
+  if (ids.length === 0) {
+    res.status(400).json({ error: 'ids must contain positive integers' });
+    return;
+  }
+
+  const db = getDb();
+  // Remap each video's collection to the same-named collection on the target
+  // desktop (creating it on the fly). Collections are per-desktop, so we can't
+  // just carry the old collection_id across — it would dangle on desk 1 while
+  // the video lives on desk 2.
+  const collectionRemap = new Map<number, number | null>();
+  let moved = 0;
+  let movedCollections = 0;
+  const sourceCollections = new Set<number>();
+
+  for (const id of ids) {
+    const v = videosRepo.findById(id);
+    if (!v) continue;
+    if (v.desktop_id === desktopId) {
+      // Already on the target desktop — nothing to do.
+      continue;
+    }
+
+    let newCollectionId: number | null = null;
+    if (v.collection_id != null) {
+      const cached = collectionRemap.get(v.collection_id);
+      if (cached !== undefined) {
+        newCollectionId = cached;
+      } else {
+        const src = collectionsRepo.findById(v.collection_id);
+        if (src) {
+          const existing = collectionsRepo.findByNameAndDesktop(src.name, desktopId as 1 | 2);
+          if (existing) {
+            newCollectionId = existing.id;
+          } else {
+            const created = collectionsRepo.create({
+              name: src.name,
+              description: src.description,
+              color: src.color,
+              desktopId: desktopId as 1 | 2,
+            });
+            newCollectionId = created.id;
+            movedCollections++;
+          }
+          collectionRemap.set(v.collection_id, newCollectionId);
+          sourceCollections.add(v.collection_id);
+        }
+      }
+    }
+
+    db.run(
+      `UPDATE videos SET desktop_id = $d, collection_id = $cid, updated_at = datetime('now') WHERE id = $id`,
+      { $d: desktopId, $cid: newCollectionId, $id: id },
+    );
+    moved++;
+
+    // Sidecar collection name is unchanged (we matched by name), but desk
+    // mapping isn't recorded in sidecars. Rewriting is a no-op for content
+    // here; skip to keep this fast.
+  }
+
+  for (const cid of sourceCollections) collectionsRepo.pruneIfEmpty(cid);
+  if (moved > 0) markDirty();
+
+  res.json({ moved, movedCollections, requested: ids.length });
 });
 
 // DELETE /api/videos/:id
