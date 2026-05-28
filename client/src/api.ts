@@ -1,4 +1,5 @@
 import type { Collection, Video, PaginatedResponse, CollectionsResponse } from '@/types'
+import type { Job } from '@/contexts/JobsContext'
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -17,14 +18,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 // Active desktop — module-level so all API calls pick it up automatically
 let _desktop: 1 | 2 = (() => {
-  try { return localStorage.getItem('reely_desktop') === '2' ? 2 : 1 } catch { return 1 }
+  try { return localStorage.getItem('desktop') === '2' ? 2 : 1 } catch { return 1 }
 })()
 
 export function getActiveDesktop(): 1 | 2 { return _desktop }
 
 export function setActiveDesktop(d: 1 | 2) {
   _desktop = d
-  try { localStorage.setItem('reely_desktop', String(d)) } catch {}
+  try { localStorage.setItem('desktop', String(d)) } catch {}
 }
 
 // Collections
@@ -118,15 +119,19 @@ export function thumbnailUrl(id: number): string {
 export function exportData(): void {
   const a = document.createElement('a')
   a.href = '/api/data/export'
-  a.download = 'reely-backup.json'
+  a.download = 'fetchr-backup.json'
   a.click()
 }
 
 export function downloadAllVideos(): void {
   const a = document.createElement('a')
   a.href = '/api/data/videos.zip'
-  a.download = 'reely-videos.zip'
+  a.download = 'fetchr-videos.zip'
   a.click()
+}
+
+export function getFailedJobs(): Promise<{ items: Job[] }> {
+  return request('/api/jobs?status=error')
 }
 
 export function retryJob(id: number): Promise<{ ok: boolean }> {
@@ -164,4 +169,16 @@ export function updateSettings(data: Record<string, string>): Promise<void> {
 
 export function regenerateSidecars(): Promise<{ written: number; failed: number; total: number }> {
   return request('/api/settings/regenerate-sidecars', { method: 'POST' })
+}
+
+export function getCookieStatus(): Promise<{ present: boolean; size: number; updatedAt: string | null }> {
+  return request('/api/settings/cookies')
+}
+
+export function uploadCookies(content: string): Promise<{ status: string; looksValid: boolean }> {
+  return request('/api/settings/cookies', { method: 'POST', body: JSON.stringify({ content }) })
+}
+
+export function deleteCookies(): Promise<{ status: string }> {
+  return request('/api/settings/cookies', { method: 'DELETE' })
 }

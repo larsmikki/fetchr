@@ -2,11 +2,29 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import { tmpdir } from 'os';
+import { existsSync } from 'fs';
 import { mkdtemp, readdir, rename, copyFile, unlink, rm } from 'fs/promises';
 import { config } from '../config.js';
+import { settingsRepo } from '../db/repositories/settings.js';
 import type { ExtractedInfo } from '../types/index.js';
 
 const execFileAsync = promisify(execFile);
+
+// Cookie auth args for yt-dlp, driven by the `youtube_cookies_mode` setting:
+//   'file'    → --cookies <uploaded cookies.txt> (recommended; works in Docker)
+//   'browser' → --cookies-from-browser <name>    (needs that browser on the host)
+function cookieArgs(): string[] {
+  const s = settingsRepo.getMany(['youtube_cookies_mode', 'youtube_cookies_browser']);
+  const mode = s['youtube_cookies_mode'];
+  if (mode === 'browser') {
+    const browser = s['youtube_cookies_browser']?.trim();
+    return browser ? ['--cookies-from-browser', browser] : [];
+  }
+  if (mode === 'file' && existsSync(config.cookiesFile)) {
+    return ['--cookies', config.cookiesFile];
+  }
+  return [];
+}
 
 interface YtDlpFormat {
   ext: string;
@@ -104,7 +122,7 @@ export async function extractVideoInfo(pageUrl: string): Promise<ExtractedInfo &
   try {
     const result = await execFileAsync(
       config.ytdlpPath,
-      ['--dump-json', '--no-playlist', pageUrl],
+      [...cookieArgs(), '--dump-json', '--no-playlist', pageUrl],
       { maxBuffer: 10 * 1024 * 1024 }, // 10MB
     );
     stdout = result.stdout;
@@ -153,6 +171,7 @@ export async function downloadToPath(videoId: number, pageUrl: string, outputDir
     await execFileAsync(
       config.ytdlpPath,
       [
+        ...cookieArgs(),
         '--ffmpeg-location', ffmpegPath,
         '--merge-output-format', 'mp4',
         '--no-playlist',
@@ -175,9 +194,10 @@ export async function downloadToPath(videoId: number, pageUrl: string, outputDir
 export async function downloadMp3ToPath(pageUrl: string, outputDir: string, ffmpegPath: string): Promise<void> {
   // Download and convert in a local temp dir to avoid hammering a network share
   // during ffmpeg conversion, then move the finished file in one shot.
-  const tempDir = await mkdtemp(path.join(tmpdir(), 'reely-mp3-'));
+  const tempDir = await mkdtemp(path.join(tmpdir(), 'mp3-'));
   const outputTemplate = path.join(tempDir, '%(title)s.%(ext)s');
   const args = [
+    ...cookieArgs(),
     '--ffmpeg-location', ffmpegPath,
     '--no-keep-video',
     '--windows-filenames',

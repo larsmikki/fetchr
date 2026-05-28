@@ -8,7 +8,7 @@ let dirty = false;
 let saveTimer: NodeJS.Timeout | null = null;
 let flushIntervalHandle: NodeJS.Timeout | null = null;
 
-const dbPath = path.join(config.dataDir, 'reely.db');
+const dbPath = path.join(config.dataDir, 'data.db');
 const SAVE_DEBOUNCE_MS = 1000;
 const FLUSH_INTERVAL_MS = 5000;
 

@@ -120,6 +120,27 @@ export const jobsRepo = {
     );
   },
 
+  listRecentFailed(limit = 20): Job[] {
+    // Skip failures that a later run resolved: a newer successful job of the
+    // same kind for the same video supersedes the error.
+    return allRows<Job>(
+      getDb().exec(
+        `SELECT * FROM jobs j
+         WHERE j.status = 'error'
+           AND NOT EXISTS (
+             SELECT 1 FROM jobs s
+             WHERE s.video_id = j.video_id
+               AND s.kind = j.kind
+               AND s.status = 'ok'
+               AND s.id > j.id
+           )
+         ORDER BY j.updated_at DESC, j.id DESC
+         LIMIT $lim`,
+        { $lim: limit },
+      ),
+    );
+  },
+
   listForVideo(videoId: number): Job[] {
     return allRows<Job>(
       getDb().exec(

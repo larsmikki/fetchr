@@ -4,15 +4,19 @@ import { onJobChange } from '../services/jobs.service.js';
 
 const router = Router();
 
-// GET /api/jobs — list active + recent jobs (active first, then last 20 completed)
+// GET /api/jobs — active jobs by default; ?video_id= for a video's history;
+// ?status=error for the most recent permanently-failed jobs.
 router.get('/', (req: Request, res: Response) => {
-  const active = jobsRepo.listActive();
   const videoId = req.query.video_id ? Number(req.query.video_id) : null;
   if (videoId) {
     res.json({ items: jobsRepo.listForVideo(videoId) });
     return;
   }
-  res.json({ items: active });
+  if (req.query.status === 'error') {
+    res.json({ items: jobsRepo.listRecentFailed() });
+    return;
+  }
+  res.json({ items: jobsRepo.listActive() });
 });
 
 // GET /api/jobs/stream — Server-Sent Events feed

@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useTheme } from '@/contexts/ThemeContext'
-import { thumbnailUrl } from '@/api'
+import { thumbnailUrl, cleanupAndRetryVideo } from '@/api'
 import { useActiveVideoJob, JOB_KIND_LABEL } from '@/contexts/JobsContext'
 import { usePlayer } from '@/contexts/PlayerContext'
 import {
@@ -36,8 +37,11 @@ const VideoCard = memo(function VideoCard({
   showCollection = true,
 }: VideoCardProps) {
   const { theme } = useTheme()
+  const queryClient = useQueryClient()
   const [menuOpen, setMenuOpen] = useState(false)
   const [imgError, setImgError] = useState(false)
+  const [retrying, setRetrying] = useState(false)
+  const [copied, setCopied] = useState(false)
   const activeJob = useActiveVideoJob(video.id)
   const { musicMode, video: playingVideo, videoRef } = usePlayer()
 
@@ -68,6 +72,24 @@ const VideoCard = memo(function VideoCard({
     if (window.confirm('Delete this video?')) onDelete(video)
   }
   const handleEdit = (e: React.MouseEvent) => { e.stopPropagation(); setMenuOpen(false); onEdit(video) }
+  const handleRetry = async (e: React.MouseEvent) => {
+    e.stopPropagation(); setMenuOpen(false)
+    setRetrying(true)
+    try {
+      await cleanupAndRetryVideo(video.id)
+      await queryClient.invalidateQueries({ queryKey: ['videos'] })
+    } catch { /* surfaced again as fetch_error on the next refetch */ }
+    finally { setRetrying(false) }
+  }
+  const handleCopyError = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!video.fetch_error) return
+    try {
+      await navigator.clipboard.writeText(video.fetch_error)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch { /* clipboard unavailable */ }
+  }
 
   const offline = useOfflineState(video.id)
   const handleOfflineToggle = (e: React.MouseEvent) => {
@@ -104,6 +126,10 @@ const VideoCard = memo(function VideoCard({
         border: `1px solid ${theme.border}`,
         borderRadius: 12,
         boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+        // While the menu is open, lift this card above its grid siblings so the
+        // dropdown isn't painted behind later cards (the hover transform on
+        // .card-hover creates a stacking context that would otherwise trap it).
+        zIndex: menuOpen ? 30 : undefined,
       }}
       onClick={() => onClick(video)}
     >
@@ -121,11 +147,42 @@ const VideoCard = memo(function VideoCard({
             )}
           </div>
         ) : video.fetch_status === 'error' ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
-            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} style={{ color: theme.text2 }}>
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-3 text-center"
+            onClick={e => e.stopPropagation()}
+          >
+            <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} style={{ color: '#e11d48' }}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
             </svg>
-            <span className="text-xs" style={{ color: theme.text2 }}>Failed to load</span>
+            <span className="text-xs font-semibold" style={{ color: theme.text }}>Failed to load</span>
+            {video.fetch_error && (
+              <span
+                className="text-[11px] leading-tight line-clamp-3 break-words select-text"
+                style={{ color: theme.text2 }}
+                title={video.fetch_error}
+              >
+                {video.fetch_error}
+              </span>
+            )}
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <button
+                onClick={handleRetry}
+                disabled={retrying}
+                className="text-xs font-medium px-2.5 py-1 rounded transition-opacity hover:opacity-80 disabled:opacity-60"
+                style={{ background: theme.accent, color: '#fff' }}
+              >
+                {retrying ? 'Retrying…' : 'Retry'}
+              </button>
+              {video.fetch_error && (
+                <button
+                  onClick={handleCopyError}
+                  className="text-xs font-medium px-2.5 py-1 rounded transition-opacity hover:opacity-80"
+                  style={{ background: theme.surface2, color: theme.text2 }}
+                >
+                  {copied ? 'Copied' : 'Copy error'}
+                </button>
+              )}
+            </div>
           </div>
         ) : !imgError ? (
           <img
@@ -261,6 +318,16 @@ const VideoCard = memo(function VideoCard({
               <>
                 <div className="fixed inset-0 z-10" onClick={e => { e.stopPropagation(); setMenuOpen(false) }} />
                 <div className="absolute right-0 top-7 z-20 py-1 rounded-lg shadow-lg min-w-32" style={{ background: theme.surface, border: `1px solid ${theme.border}` }}>
+                  {video.fetch_status === 'error' && (
+                    <button
+                      onClick={handleRetry}
+                      disabled={retrying}
+                      className="w-full text-left px-3 py-1.5 text-sm transition-colors hover:opacity-80 disabled:opacity-60"
+                      style={{ color: theme.text }}
+                    >
+                      {retrying ? 'Retrying…' : 'Retry download'}
+                    </button>
+                  )}
                   <button onClick={handleEdit} className="w-full text-left px-3 py-1.5 text-sm transition-colors hover:opacity-80" style={{ color: theme.text }}>Edit</button>
                   <button
                     onClick={handleOfflineToggle}

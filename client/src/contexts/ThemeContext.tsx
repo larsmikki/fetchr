@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import type { ReactNode } from 'react'
 
-const STORAGE_KEY = 'reely-theme'
+const STORAGE_KEY = 'theme'
 
 export interface ThemeDefinition {
   name: string

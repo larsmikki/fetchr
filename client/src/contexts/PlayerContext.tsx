@@ -20,10 +20,10 @@ interface PlayerContextValue {
 
 const PlayerContext = createContext<PlayerContextValue | null>(null)
 
-const MUSIC_MODE_KEY = 'reely_music_mode'
+const MUSIC_MODE_KEY = 'music_mode'
 
 export function PlayerProvider({ children, desktop }: { children: ReactNode; desktop: 1 | 2 }) {
-  const storageKey = `reely_player_d${desktop}`
+  const storageKey = `player_d${desktop}`
 
   const [video, setVideo] = useState<Video | null>(null)
   const [mode, setMode] = useState<PlayerMode>('closed')

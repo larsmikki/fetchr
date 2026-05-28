@@ -140,7 +140,7 @@ function MiniPlayerBar() {
 }
 
 function LogoMark({ size = 28 }: { size?: number }) {
-  return <img src="/favicon.svg" width={size} height={size} alt="Reely" className="shrink-0" />
+  return <img src="/favicon.svg" width={size} height={size} alt="Fetchr" className="shrink-0" />
 }
 
 function MusicModeButton() {
@@ -182,7 +182,7 @@ export default function Layout() {
           <Link to="/" className="flex items-center gap-2.5 shrink-0" style={{ textDecoration: 'none' }}>
             <LogoMark size={28} />
             <span className="text-xl font-extrabold tracking-tight gradient-text select-none">
-              Reely
+              Fetchr
             </span>
           </Link>
 

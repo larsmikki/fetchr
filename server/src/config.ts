@@ -11,6 +11,7 @@ export const config = {
   prodPort: 3030,
   dataDir,
   videosDir: path.join(dataDir, 'videos'),
+  cookiesFile: path.join(dataDir, 'cookies.txt'),
   ytdlpPath: process.env.YTDLP_PATH || 'yt-dlp',
   ffmpegPath: (process.env.FFMPEG_PATH || ffmpegStatic || 'ffmpeg') as string,
   nodeEnv: process.env.NODE_ENV || 'development',

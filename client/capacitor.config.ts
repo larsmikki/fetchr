@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli'
 
 const config: CapacitorConfig = {
-  appId: 'app.reely.client',
-  appName: 'Reely',
+  appId: 'app.fetchr.client',
+  appName: 'Fetchr',
   webDir: 'dist',
   server: {
     // For dev against a tunneled/LAN server, set CAPACITOR_SERVER_URL in your

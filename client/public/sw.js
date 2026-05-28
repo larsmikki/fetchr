@@ -1,4 +1,4 @@
-// Reely service worker.
+// Service worker.
 // - Intercepts GET /api/videos/:id/stream and serves bytes from IndexedDB when
 //   the user has downloaded the video for offline use. Honors HTTP Range so
 //   the <video> element can still seek.
@@ -6,11 +6,11 @@
 //   so the grid renders without the server.
 // - Cache-first for built assets so the app shell launches offline.
 
-const VERSION = 'reely-v1'
+const VERSION = 'v1'
 const STATIC_CACHE = `static-${VERSION}`
 const API_CACHE = `api-${VERSION}`
 
-const DB_NAME = 'reely-offline'
+const DB_NAME = 'offline'
 const DB_VERSION = 1
 const STORE_VIDEOS = 'videos'
 

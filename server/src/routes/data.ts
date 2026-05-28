@@ -41,7 +41,7 @@ router.get('/export', (_req: Request, res: Response) => {
 
   const payload = { version: 1, exported_at: new Date().toISOString(), collections, videos };
 
-  res.setHeader('Content-Disposition', 'attachment; filename="reely-backup.json"');
+  res.setHeader('Content-Disposition', 'attachment; filename="fetchr-backup.json"');
   res.setHeader('Content-Type', 'application/json');
   res.json(payload);
 });
@@ -164,7 +164,7 @@ router.get('/videos.zip', async (_req: Request, res: Response) => {
     return;
   }
 
-  res.setHeader('Content-Disposition', 'attachment; filename="reely-videos.zip"');
+  res.setHeader('Content-Disposition', 'attachment; filename="fetchr-videos.zip"');
   res.setHeader('Content-Type', 'application/zip');
 
   // level: 0 = store only (no recompression — videos are already compressed, this is essentially free)

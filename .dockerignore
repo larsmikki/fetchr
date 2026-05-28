@@ -3,3 +3,6 @@ node_modules
 .git
 *.md
 server/data
+# Runtime data — never bake the local DB or secrets into the image
+data
+**/cookies.txt

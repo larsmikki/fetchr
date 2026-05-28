@@ -44,4 +44,4 @@ The project is a monorepo containing a React frontend and a Node.js backend.
   - `src/db/`: Database connection and migration logic.
 
 ### Data Storage
-- The application uses a local SQLite database located at `data/reely.db`.
+- The application uses a local SQLite database located at `data/data.db`.

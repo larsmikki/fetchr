@@ -37,6 +37,9 @@ Thumbs.db
 data/
 test_album/
 
+# Uploaded YouTube cookies (live session tokens) — never commit
+**/cookies.txt
+
 # Tool-specific
 .gstack/
 .code-review-graph/

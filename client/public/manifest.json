@@ -1,6 +1,6 @@
 {
-  "name": "Reely",
-  "short_name": "Reely",
+  "name": "Fetchr",
+  "short_name": "Fetchr",
   "description": "Video collection manager — self-hosted, private, free",
   "start_url": "/",
   "display": "standalone",

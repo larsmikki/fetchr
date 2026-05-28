@@ -1,17 +1,17 @@
-# Reely
+# Fetchr
 
 ![screenshot](screenshot.png)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-larsmikki%2Freely-blue?logo=docker)](https://hub.docker.com/r/larsmikki/reely)
-[![ghcr.io](https://img.shields.io/badge/ghcr.io-larsmikki%2Freely-blue?logo=github)](https://github.com/larsmikki/reely/pkgs/container/reely)
+[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-larsmikki%2Ffetchr-blue?logo=docker)](https://hub.docker.com/r/larsmikki/fetchr)
+[![ghcr.io](https://img.shields.io/badge/ghcr.io-larsmikki%2Ffetchr-blue?logo=github)](https://github.com/larsmikki/fetchr/pkgs/container/fetchr)
 [![Node 20](https://img.shields.io/badge/Node-20-brightgreen?logo=node.js)](https://nodejs.org/)
 
-**Reely** is a self-hosted video collection manager. Paste any video URL, and Reely saves it to your library — ready to stream in-browser or download. Organize your videos into collections, search across your library, and keep everything on your own machine.
+**Fetchr** is a self-hosted video collection manager. Paste any video URL, and Fetchr saves it to your library — ready to stream in-browser or download. Organize your videos into collections, search across your library, and keep everything on your own machine.
 
 ## Features
 
-- Paste any URL and Reely fetches the title, thumbnail, and metadata via yt-dlp
+- Paste any URL and Fetchr fetches the title, thumbnail, and metadata via yt-dlp
 - **Stream in-browser** with a persistent bottom player — keep watching while you browse your library
 - **Download** videos or extract MP3 audio directly to a folder on your server
 - Organize into **collections** with custom colors
@@ -35,29 +35,29 @@ Works on Synology, Unraid, TrueNAS, QNAP, Proxmox, or a plain Docker host.
 
 ```bash
 docker run -d \
-  --name reely \
+  --name fetchr \
   -p 3030:3030 \
-  -v reely-data:/app/data \
+  -v fetchr-data:/app/data \
   --restart unless-stopped \
-  larsmikki/reely:latest
+  larsmikki/fetchr:latest
 ```
 
 **Docker Compose (recommended):**
 
 ```yaml
 services:
-  reely:
-    image: larsmikki/reely:latest
-    container_name: reely
+  fetchr:
+    image: larsmikki/fetchr:latest
+    container_name: fetchr
     ports:
       - "3030:3030"
     volumes:
-      - reely-data:/app/data
+      - fetchr-data:/app/data
       # - /path/to/your/output:/output  # optional: mount a host folder for downloads
     restart: unless-stopped
 
 volumes:
-  reely-data:
+  fetchr-data:
 ```
 
 To download videos to a folder on your host machine, uncomment the second volume line, set the host path, and configure the download path to `/output` in **Settings**.
@@ -68,8 +68,8 @@ Requires [Git for Windows](https://git-scm.com/download/win), [Node.js 20+](http
 
 ```powershell
 scoop install nodejs-lts git yt-dlp ffmpeg
-git clone https://github.com/larsmikki/reely.git
-cd reely
+git clone https://github.com/larsmikki/fetchr.git
+cd fetchr
 npm install
 npm run dev
 ```
@@ -85,8 +85,8 @@ npm start
 
 ```bash
 brew install node git yt-dlp ffmpeg
-git clone https://github.com/larsmikki/reely.git
-cd reely
+git clone https://github.com/larsmikki/fetchr.git
+cd fetchr
 npm install
 npm run dev
 ```
@@ -107,8 +107,8 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs git ffmpeg python3-pip
 sudo pip3 install -U yt-dlp
 
-git clone https://github.com/larsmikki/reely.git
-cd reely
+git clone https://github.com/larsmikki/fetchr.git
+cd fetchr
 npm install
 npm run dev
 ```
@@ -142,7 +142,7 @@ For a production build: `npm run build && npm start`.
 
 ```
 /app/data/
-  reely.db     # SQLite database (videos, collections, settings)
+  data.db      # SQLite database (videos, collections, settings)
   videos/      # downloaded video files (if download path is inside /app/data)
 ```
 
@@ -152,7 +152,7 @@ For a production build: `npm run build && npm start`.
 Some sites are not supported by yt-dlp or may require cookies. Check that the URL is publicly accessible and try updating to the latest Docker image (yt-dlp is updated with each release).
 
 **Streaming doesn't work**
-Reely streams directly from the source URL via yt-dlp. If the source site throttles or blocks server-side requests, playback may fail. Downloading the video first is a reliable alternative.
+Fetchr streams directly from the source URL via yt-dlp. If the source site throttles or blocks server-side requests, playback may fail. Downloading the video first is a reliable alternative.
 
 **Download path not working**
 Make sure you have mounted a host folder into the container and set the path in **Settings → Download path** to match the container-side mount point (e.g. `/output`).
@@ -163,4 +163,4 @@ Make sure you have mounted a host folder into the container and set the path in 
 
 ## Support
 
-If Reely saves you time, consider [buying me a coffee](https://buymeacoffee.com/larsmikki) or [donating via PayPal](https://paypal.me/larsmikki). It helps keep the project free and maintained.
+If Fetchr saves you time, consider [buying me a coffee](https://buymeacoffee.com/larsmikki) or [donating via PayPal](https://paypal.me/larsmikki). It helps keep the project free and maintained.

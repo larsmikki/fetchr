@@ -1,5 +1,5 @@
 {
-  "name": "reely",
+  "name": "fetchr",
   "version": "1.0.0",
   "private": true,
   "workspaces": [
@@ -13,6 +13,6 @@
     "test": "npm run test -w server"
   },
   "devDependencies": {
-    "concurrently": "^9.0.0"
+    "concurrently": "^9.2.1"
   }
 }

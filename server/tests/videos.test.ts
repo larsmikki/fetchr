@@ -14,7 +14,7 @@ vi.mock('../src/services/extractor.service.js', () => ({
     site: 'example',
   }),
   getStreamUrl: vi.fn().mockResolvedValue('https://example.com/stream.mp4'),
-  downloadToPath: vi.fn().mockResolvedValue('/tmp/reely-test/videos/1.mp4'),
+  downloadToPath: vi.fn().mockResolvedValue('/tmp/test-data/videos/1.mp4'),
   downloadMp3ToPath: vi.fn().mockResolvedValue(undefined),
 }))
 

@@ -2,7 +2,7 @@
 // the React app (writes) and the service worker (reads). The schema and
 // version must stay in sync with sw.js.
 
-export const DB_NAME = 'reely-offline'
+export const DB_NAME = 'offline'
 export const DB_VERSION = 1
 export const STORE_VIDEOS = 'videos'
 

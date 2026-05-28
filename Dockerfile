@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:26-alpine AS builder
 
 WORKDIR /app
 
@@ -13,12 +13,25 @@ COPY client/ client/
 RUN npm run build -w client
 RUN npm run build -w server
 
-FROM node:20-alpine
+FROM node:26-slim
 
 WORKDIR /app
 
-RUN apk add --no-cache python3 py3-pip ffmpeg \
-    && pip3 install --break-system-packages yt-dlp
+# Deno is the JS runtime yt-dlp uses to solve YouTube's signature / n-challenge
+# (EJS). Copied from the official image so we get a glibc binary — note the
+# runtime stage is intentionally Debian-based (not Alpine): Deno's musl support
+# is unreliable and hangs in containers. See https://github.com/yt-dlp/yt-dlp/wiki/EJS
+COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 python3-pip ffmpeg ca-certificates wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# yt-dlp[default] pulls the bundled EJS challenge-solver scripts so the n-sig
+# can be solved offline. Bump CACHEBUST to force a fresh yt-dlp on rebuild:
+#   docker compose build --build-arg CACHEBUST=$(date +%s)
+ARG CACHEBUST=1
+RUN pip3 install --break-system-packages --no-cache-dir -U "yt-dlp[default]"
 
 COPY package.json package-lock.json ./
 COPY server/package.json server/

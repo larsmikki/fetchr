@@ -25,7 +25,7 @@ async function main() {
   const port = config.nodeEnv === 'production' ? config.prodPort : config.port;
 
   app.listen(port, () => {
-    console.log(`Reely server running on http://localhost:${port}`);
+    console.log(`Fetchr server running on http://localhost:${port}`);
   });
 
   const shutdown = async (signal: string) => {

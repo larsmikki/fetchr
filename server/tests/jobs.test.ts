@@ -17,7 +17,7 @@ vi.mock('../src/services/extractor.service.js', () => ({
     site: 'example',
   }),
   getStreamUrl: vi.fn().mockResolvedValue('https://example.com/stream.mp4'),
-  downloadToPath: vi.fn().mockResolvedValue('/tmp/reely-test/videos/mock.mp4'),
+  downloadToPath: vi.fn().mockResolvedValue('/tmp/test-data/videos/mock.mp4'),
   downloadMp3ToPath: vi.fn().mockResolvedValue(undefined),
 }))
 
@@ -44,6 +44,43 @@ describe('GET /api/jobs', () => {
     const res = await supertest(app).get(`/api/jobs?video_id=${v1.body.id}`)
     expect(res.status).toBe(200)
     expect(res.body.items.every((j: { video_id: number }) => j.video_id === v1.body.id)).toBe(true)
+  })
+
+  it('lists recent failures with ?status=error', async () => {
+    const job = jobsRepo.enqueue({ videoId: 1, kind: 'extract_metadata' })
+    jobsRepo.claimNext()
+    jobsRepo.markFailed(job.id, 'boom', false)
+
+    const res = await supertest(app).get('/api/jobs?status=error')
+    expect(res.status).toBe(200)
+    expect(res.body.items).toHaveLength(1)
+    expect(res.body.items[0]).toMatchObject({ id: job.id, status: 'error', error: 'boom' })
+  })
+
+  it('omits a failure once a newer same-kind job for the video succeeds', async () => {
+    const failed = jobsRepo.enqueue({ videoId: 1, kind: 'extract_metadata' })
+    jobsRepo.claimNext()
+    jobsRepo.markFailed(failed.id, 'boom', false)
+
+    const retry = jobsRepo.enqueue({ videoId: 1, kind: 'extract_metadata' })
+    jobsRepo.claimNext()
+    jobsRepo.markComplete(retry.id)
+
+    const res = await supertest(app).get('/api/jobs?status=error')
+    expect(res.body.items).toHaveLength(0)
+  })
+
+  it('keeps a failure when the later success is a different kind', async () => {
+    const failed = jobsRepo.enqueue({ videoId: 1, kind: 'download_mp3' })
+    jobsRepo.claimNext()
+    jobsRepo.markFailed(failed.id, 'boom', false)
+
+    const other = jobsRepo.enqueue({ videoId: 1, kind: 'download_video' })
+    jobsRepo.claimNext()
+    jobsRepo.markComplete(other.id)
+
+    const res = await supertest(app).get('/api/jobs?status=error')
+    expect(res.body.items.map((j: { id: number }) => j.id)).toContain(failed.id)
   })
 })
 
@@ -93,6 +130,6 @@ describe('worker drainJobsForTest', () => {
     const updated = videosRepo.findById(created.body.id)!
     expect(updated.fetch_status).toBe('ok')
     expect(updated.title).toBe('Job Mock')
-    expect(updated.local_path).toBe('/tmp/reely-test/videos/mock.mp4')
+    expect(updated.local_path).toBe('/tmp/test-data/videos/mock.mp4')
   })
 })
