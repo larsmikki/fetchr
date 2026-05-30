@@ -75,6 +75,26 @@ export function PlayerProvider({ children, desktop }: { children: ReactNode; des
     return () => clearInterval(interval)
   }, [musicMode, video, storageKey])
 
+  // Push track metadata to the OS / Bluetooth via Media Session API
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return
+    if (!video) {
+      navigator.mediaSession.metadata = null
+      return
+    }
+    const artwork: MediaImage[] = []
+    if (video.thumbnail_url) {
+      artwork.push({ src: video.thumbnail_url, sizes: '512x512', type: 'image/jpeg' })
+    } else {
+      artwork.push({ src: `/api/videos/${video.id}/thumbnail`, sizes: '512x512', type: 'image/jpeg' })
+    }
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: video.title ?? 'Untitled',
+      artist: video.site ?? 'Fetchr',
+      artwork,
+    })
+  }, [video])
+
   const play = useCallback((v: Video) => {
     setVideo(v)
     setMode(musicModeRef.current ? 'mini' : 'full')

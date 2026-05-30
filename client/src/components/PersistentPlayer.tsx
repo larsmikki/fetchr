@@ -29,7 +29,7 @@ function formatDuration(seconds: number): string {
 export default function PersistentPlayer({ collections }: { collections: Collection[] }) {
   const { video, mode, videoRef, minimize, close, consumePendingSeek } = usePlayer()
   const { theme } = useTheme()
-  const [userMaximized, setUserMaximized] = useState(false)
+  const [userMaximized, setUserMaximized] = useState(true)
   const [redownloading, setRedownloading] = useState(false)
   const offline = useOfflineState(video?.id ?? -1)
 

@@ -1,4 +1,5 @@
 import { createContext, useContext, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { getActiveDesktop, setActiveDesktop } from '@/api'
 
 interface DesktopContextValue {
@@ -10,10 +11,12 @@ const DesktopContext = createContext<DesktopContextValue>({ desktop: 1, switchDe
 
 export function DesktopProvider({ children }: { children: React.ReactNode }) {
   const [desktop, setDesktop] = useState<1 | 2>(getActiveDesktop)
+  const queryClient = useQueryClient()
 
   function switchDesktop(d: 1 | 2) {
     setActiveDesktop(d)
     setDesktop(d)
+    void queryClient.invalidateQueries()
   }
 
   return (
